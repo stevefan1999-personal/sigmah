@@ -37,13 +37,44 @@ where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
     #[inline(always)]
-    pub const fn with_mask(pattern: [u8; N], mask: [u8; N]) -> Self {
+    pub const fn from_pattern_mask(pattern: [u8; N], mask: [u8; N]) -> Self {
         Self {
             pattern,
-            mask: Self::bstring_mask_array_to_bitarr(mask),
+            mask: Self::from_bstring_mask_array_to_bitarr(mask),
         }
     }
 
+    // Notice we cannot use From<([u8; N], [u8; N])> because it will break const guarantee
+
+    #[inline(always)]
+    pub const fn from_pattern_mask_tuple((pattern, mask): ([u8; N], [u8; N])) -> Self {
+        Self::from_pattern_mask(pattern, mask)
+    }
+
+    #[inline(always)]
+    pub const fn from_option_array(needle: [Option<u8>; N]) -> Self {
+        unsafe { Self::from_option_slice_unchecked(&needle) }
+    }
+
+    #[inline(always)]
+    pub const fn from_bstring_mask_array_to_bitarr(
+        pattern: [u8; N],
+    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
+        unsafe { Self::from_bstring_mask_slice_to_bitarr_unchecked(&pattern) }
+    }
+
+    #[inline(always)]
+    pub const fn from_boolean_mask_array_to_bitarr(
+        pattern: [bool; N],
+    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
+        unsafe { Self::from_boolean_mask_slice_to_bitarr_unchecked(&pattern) }
+    }
+}
+
+impl<const N: usize> Signature<N>
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
     #[inline(always)]
     pub fn scan<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
         self.scan_inner(haystack, Self::match_best_effort)
@@ -225,30 +256,6 @@ where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
     #[inline(always)]
-    pub const fn from_option_array(needle: [Option<u8>; N]) -> Self {
-        unsafe { Self::from_option_slice_unchecked(&needle) }
-    }
-
-    #[inline(always)]
-    pub const fn bstring_mask_array_to_bitarr(
-        pattern: [u8; N],
-    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        unsafe { Self::bstring_mask_slice_to_bitarr_unchecked(&pattern) }
-    }
-
-    #[inline(always)]
-    pub const fn boolean_mask_array_to_bitarr(
-        pattern: [bool; N],
-    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        unsafe { Self::boolean_mask_slice_to_bitarr_unchecked(&pattern) }
-    }
-}
-
-impl<const N: usize> Signature<N>
-where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-{
-    #[inline(always)]
     pub const unsafe fn from_option_slice_unchecked(needle: &[Option<u8>]) -> Self {
         let mut needle_: [u8; N] = [0; N];
         let mut pattern: [bool; N] = [false; N];
@@ -264,12 +271,12 @@ where
         }
         Self {
             pattern: needle_,
-            mask: Self::boolean_mask_slice_to_bitarr_unchecked(&pattern),
+            mask: Self::from_boolean_mask_slice_to_bitarr_unchecked(&pattern),
         }
     }
 
     #[inline(always)]
-    pub const unsafe fn bstring_mask_slice_to_bitarr_unchecked(
+    pub const unsafe fn from_bstring_mask_slice_to_bitarr_unchecked(
         pattern: &[u8],
     ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
         let mut pattern_bool: [bool; N] = [false; N];
@@ -282,11 +289,11 @@ where
             };
             i += 1;
         }
-        Self::boolean_mask_slice_to_bitarr_unchecked(&pattern_bool)
+        Self::from_boolean_mask_slice_to_bitarr_unchecked(&pattern_bool)
     }
 
     #[inline(always)]
-    pub const unsafe fn boolean_mask_slice_to_bitarr_unchecked(
+    pub const unsafe fn from_boolean_mask_slice_to_bitarr_unchecked(
         pattern: &[bool],
     ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
         let mut arr: BitArray<[u8; N.div_ceil(u8::BITS as usize)]> = BitArray::ZERO;
