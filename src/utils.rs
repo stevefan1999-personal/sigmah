@@ -1,4 +1,5 @@
 #[cfg(feature = "simd")]
+#[inline(always)]
 pub const unsafe fn pad_zeroes_slice_unchecked<const N: usize>(arr: &[u8]) -> [u8; N] {
     let mut arr_: [u8; N] = [0; N];
     let n = arr.len();
