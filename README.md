@@ -92,7 +92,7 @@ Currently, the Rust programming language feature known as [`generic_const_exprs`
 
 I'm keenly watching for advancements that could either enhance this feature or replace it with something more fitting for long-term use.
 
-SIMD backend requires nightly for `portable_simd` (obviously), as well as avx512_target_feature too for a nifty AVX512BW hack:
+SIMD backend requires nightly for `portable_simd` (obviously), as well as [`avx512_target_feature`](https://github.com/rust-lang/rust/issues/44839) too for a nifty AVX512BW hack:
 
 ```
 bool __fastcall sub_140001C86(__int64 a1, __int64 a2, __int64 _R8)
@@ -111,7 +111,7 @@ bool __fastcall sub_140001C86(__int64 a1, __int64 a2, __int64 _R8)
 }
 ```
 
-Notice the vmovdqu64, vpcmpb and kmovq. All of which requires more than AVX512F, since this directly reads from the mask register, and hence should be killing on the competition at an insane speed due to its compact and direct design. But this is gated behind [`avx512_target_feature`](https://github.com/rust-lang/rust/issues/44839) at the moment. AVX2 code generated has variable length, which is due with different signature size, so it is not shown as snippet here, but I strongly suggest you to check out the result in IDA as well.
+Notice the vmovdqu64, vpcmpb and kmovq. All of which requires more than AVX512F, since this directly reads from the mask register, and hence should be killing on the competition at an insane speed due to its compact and direct design. But this is gated behind `avx512_target_feature` at the moment, and it is expected to be stabilized soon in the next half of 2025. AVX2 code generated has variable length, which is due with different signature size, so it is not shown as snippet here, but I strongly suggest you to check out the result in IDA as well.
 
 # SIMD explanation
 
