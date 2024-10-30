@@ -10,10 +10,7 @@ use multiversion::multiversion;
 
 #[cfg(feature = "simd")]
 use {
-    crate::{
-        simd::simd_match,
-        utils::Bits,
-    },
+    crate::{simd::simd_match, utils::Bits},
     core::simd::{LaneCount, SupportedLaneCount},
     num_traits::PrimInt,
 };
@@ -45,28 +42,73 @@ where
     }
 
     #[inline(always)]
-    pub fn scan<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+    pub fn scan<'a>(&self, mut haystack: &'a [u8]) -> &'a [u8] {
+        while !haystack.is_empty() {
+            if self.match_best_effort(haystack) {
+                break;
+            }
+            haystack = &haystack[1..];
+        }
+        haystack
+    }
+
+    #[inline(always)]
+    pub fn scan_naive<'a>(&self, mut haystack: &'a [u8]) -> &'a [u8] {
+        while !haystack.is_empty() {
+            if self.match_naive(haystack) {
+                break;
+            }
+            haystack = &haystack[1..];
+        }
+        haystack
+    }
+
+    #[cfg(feature = "simd")]
+    #[inline(always)]
+    pub fn scan_simd<'a, T>(&self, mut haystack: &'a [u8]) -> &'a [u8]
+    where
+        T: Bits + PrimInt,
+        [(); T::BITS as usize]:,
+        LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
+        u64: From<T>,
+    {
+        while !haystack.is_empty() {
+            if self.match_simd(haystack) {
+                break;
+            }
+            haystack = &haystack[1..];
+        }
+        haystack
+    }
+}
+
+impl<const N: usize> Signature<N>
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
+    #[inline(always)]
+    pub fn match_best_effort<'a>(&self, haystack: &'a [u8]) -> bool {
         #[cfg(feature = "simd")]
         {
             if N > 32 {
-                self.scan_simd::<u64>(haystack)
+                self.match_simd::<u64>(haystack)
             } else if N > 16 {
-                self.scan_simd::<u32>(haystack)
+                self.match_simd::<u32>(haystack)
             } else if N > 8 {
-                self.scan_simd::<u16>(haystack)
+                self.match_simd::<u16>(haystack)
             } else {
-                self.scan_simd::<u8>(haystack)
+                self.match_simd::<u8>(haystack)
             }
         }
 
         #[cfg(not(feature = "simd"))]
         {
-            self.scan_naive(haystack)
+            self.match_naive(haystack)
         }
     }
 
     #[inline(always)]
-    pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+    pub fn match_naive<'a>(&self, haystack: &'a [u8]) -> bool {
         #[inline(always)]
         #[multiversion(targets(
             "x86_64+avx2",
@@ -85,32 +127,22 @@ where
             "arm+vfp3",
             "arm+vfp2",
         ))]
-        fn scan_naive_inner<'a, const N: usize>(
-            this: &Signature<N>,
-            mut haystack: &'a [u8],
-        ) -> &'a [u8]
+        fn match_naive_inner<'a, const N: usize>(this: &Signature<N>, haystack: &'a [u8]) -> bool
         where
             [(); N.div_ceil(u8::BITS as usize)]:,
         {
-            while !haystack.is_empty() {
-                if unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }
-                    .into_iter()
-                    .zip(this.pattern)
-                    .zip(this.mask)
-                    .all(|((haystack, pattern), mask)| !mask || haystack == pattern)
-                {
-                    break;
-                }
-                haystack = &haystack[1..];
-            }
-            haystack
+            unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }
+                .into_iter()
+                .zip(this.pattern)
+                .zip(this.mask)
+                .all(|((haystack, pattern), mask)| !mask || haystack == pattern)
         }
-        scan_naive_inner::<N>(self, haystack)
+        match_naive_inner::<N>(self, haystack)
     }
 
     #[cfg(feature = "simd")]
     #[inline(always)]
-    pub fn scan_simd<'a, T>(&self, mut haystack: &'a [u8]) -> &'a [u8]
+    pub fn match_simd<'a, T>(&self, haystack: &'a [u8]) -> bool
     where
         T: Bits + PrimInt,
         [(); T::BITS as usize]:,
@@ -119,30 +151,23 @@ where
     {
         let bits: usize = T::BITS as usize;
 
-        while !haystack.is_empty() {
-            if haystack
-                .chunks(bits)
-                .map(|x| unsafe { pad_zeroes_slice_unchecked::<{ T::BITS as usize }>(x) })
-                .zip(
-                    self.pattern
-                        .chunks(bits)
-                        .map(|x| unsafe { pad_zeroes_slice_unchecked::<{ T::BITS as usize }>(x) }),
-                )
-                .zip(self.mask.chunks(bits))
-                .all(|((haystack, pattern), mask)| {
-                    simd_match::<T, { T::BITS as usize }>(
-                        pattern,
-                        mask.iter_ones()
-                            .fold(T::zero(), |acc, x| acc | (T::one() << x)),
-                        haystack,
-                    )
-                })
-            {
-                break;
-            }
-            haystack = &haystack[1..];
-        }
         haystack
+            .chunks(bits)
+            .map(|x| unsafe { pad_zeroes_slice_unchecked::<{ T::BITS as usize }>(x) })
+            .zip(
+                self.pattern
+                    .chunks(bits)
+                    .map(|x| unsafe { pad_zeroes_slice_unchecked::<{ T::BITS as usize }>(x) }),
+            )
+            .zip(self.mask.chunks(bits))
+            .all(|((haystack, pattern), mask)| {
+                simd_match::<T, { T::BITS as usize }>(
+                    pattern,
+                    mask.iter_ones()
+                        .fold(T::zero(), |acc, x| acc | (T::one() << x)),
+                    haystack,
+                )
+            })
     }
 }
 
