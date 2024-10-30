@@ -1,9 +1,13 @@
 [package]
 name = "sigmah"
-version = "0.1.6"
+version = "0.2.0"
 edition = "2021"
 description = "Create and scan binary signature in Rust efficiently"
 license = "MIT"
+authors = ["Steve Fan <29133953+stevefan1999-personal@users.noreply.github.com>"]
+repository = "https://github.com/stevefan1999-personal/sigmah"
+keywords = ["scanning", "binary", "simd", "signature", "const"]
+categories = ["algorithms", "no-std::no-alloc", "text-processing"]
 
 [dependencies]
 bitvec = { version = "1.0.1", default-features = false }
