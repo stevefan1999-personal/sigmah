@@ -130,7 +130,7 @@ where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
     #[inline(always)]
-    pub fn match_best_effort<'a>(&self, haystack: &'a [u8]) -> bool {
+    pub fn match_best_effort(&self, haystack: &[u8]) -> bool {
         #[cfg(feature = "simd")]
         {
             if N > 32 {
@@ -151,7 +151,7 @@ where
     }
 
     #[inline(always)]
-    pub fn match_naive<'a>(&self, haystack: &'a [u8]) -> bool {
+    pub fn match_naive(&self, haystack: &[u8]) -> bool {
         #[inline(always)]
         #[multiversion(targets(
             "x86_64+avx2",
@@ -185,7 +185,7 @@ where
 
     #[cfg(feature = "simd")]
     #[inline(always)]
-    pub fn match_simd<'a, T>(&self, haystack: &'a [u8]) -> bool
+    pub fn match_simd<T>(&self, haystack: &[u8]) -> bool
     where
         T: Bits + PrimInt,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
@@ -204,7 +204,7 @@ where
 
     #[cfg(feature = "simd")]
     #[inline(always)]
-    pub fn match_simd_select<'a, T>(&self, haystack: &'a [u8]) -> bool
+    pub fn match_simd_select<T>(&self, haystack: &[u8]) -> bool
     where
         T: Bits + PrimInt,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
