@@ -94,7 +94,7 @@ I'm keenly watching for advancements that could either enhance this feature or r
 
 SIMD backend requires nightly for `portable_simd` (obviously), as well as [`avx512_target_feature`](https://github.com/rust-lang/rust/issues/44839) too for a nifty AVX512BW hack:
 
-```
+```c
 bool __fastcall sub_140001C86(__int64 a1, __int64 a2, __int64 _R8)
 {
   bool result; // al
