@@ -12,11 +12,13 @@ use multiversion::multiversion;
 use {
     crate::{
         simd::simd_match,
-        utils::{pad_zeroes_slice_unchecked, Bits},
+        utils::Bits,
     },
     core::simd::{LaneCount, SupportedLaneCount},
     num_traits::PrimInt,
 };
+
+use crate::utils::pad_zeroes_slice_unchecked;
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -67,12 +69,10 @@ where
     pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
         #[inline(always)]
         #[multiversion(targets(
-            "x86_64+avx512bw",
             "x86_64+avx2",
             "x86_64+avx",
             "x86_64+sse2",
             "x86_64+sse",
-            "x86+avx512bw",
             "x86+avx2",
             "x86+avx",
             "x86+sse2",
