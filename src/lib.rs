@@ -45,7 +45,15 @@ where
     pub fn scan<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
         #[cfg(feature = "simd")]
         {
-            self.scan_simd::<usize>(haystack)
+            if N > 32 {
+                self.scan_simd::<u64>(haystack)
+            } else if N > 16 {
+                self.scan_simd::<u32>(haystack)
+            } else if N > 8 {
+                self.scan_simd::<u16>(haystack)
+            } else {
+                self.scan_simd::<u8>(haystack)
+            }
         }
 
         #[cfg(not(feature = "simd"))]
@@ -77,7 +85,7 @@ where
         T: Bits + PrimInt,
         [(); T::BITS as usize]:,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
-        usize: From<T>,
+        u64: From<T>,
     {
         let bits: usize = T::BITS as usize;
 

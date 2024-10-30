@@ -37,7 +37,7 @@ use multiversion::multiversion;
 ))]
 pub fn simd_match_select<M, const N: usize>(pattern: [u8; N], mask: M, data: [u8; N]) -> bool
 where
-    M: Into<u64>,
+M: Into<u64>,
     LaneCount<N>: SupportedLaneCount,
 {
     Mask::from_bitmask(mask.into())
@@ -84,7 +84,7 @@ where
 ))]
 pub fn simd_match<M, const N: usize>(pattern: [u8; N], mask: M, data: [u8; N]) -> bool
 where
-    M: Into<usize>,
+    M: Into<u64>,
     LaneCount<N>: SupportedLaneCount,
 {
     (!Mask::from_bitmask(mask.into() as u64)
