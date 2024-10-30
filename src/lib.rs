@@ -14,8 +14,11 @@ use {
         simd::{simd_match, simd_match_select},
         utils::Bits,
     },
-    core::simd::{LaneCount, SupportedLaneCount},
-    num_traits::PrimInt,
+    core::{
+        ops::{BitOr, Shl},
+        simd::{LaneCount, SupportedLaneCount},
+    },
+    num_traits::{One, Zero},
 };
 
 use crate::utils::pad_zeroes_slice_unchecked;
@@ -89,8 +92,7 @@ where
     #[inline(always)]
     pub fn scan_simd<'a, T>(&self, haystack: &'a [u8]) -> &'a [u8]
     where
-        T: Bits + PrimInt,
-        [(); T::BITS as usize]:,
+        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
@@ -101,8 +103,7 @@ where
     #[inline(always)]
     pub fn scan_simd_select<'a, T>(&self, haystack: &'a [u8]) -> &'a [u8]
     where
-        T: Bits + PrimInt,
-        [(); T::BITS as usize]:,
+        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
@@ -187,7 +188,7 @@ where
     #[inline(always)]
     pub fn match_simd<T>(&self, haystack: &[u8]) -> bool
     where
-        T: Bits + PrimInt,
+        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
@@ -206,7 +207,7 @@ where
     #[inline(always)]
     pub fn match_simd_select<T>(&self, haystack: &[u8]) -> bool
     where
-        T: Bits + PrimInt,
+        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
@@ -234,7 +235,7 @@ where
         ),
     >
     where
-        T: Bits + PrimInt,
+        T: Bits,
     {
         let bits: usize = T::BITS as usize;
 
