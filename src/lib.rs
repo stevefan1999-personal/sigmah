@@ -24,9 +24,9 @@ pub struct Signature<const N: usize>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
-    pub mask: BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
     #[cfg_attr(feature = "serde", serde(with = "serde_big_array::BigArray"))]
     pub pattern: [u8; N],
+    pub mask: BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
 }
 
 impl<const N: usize> Signature<N>
@@ -42,23 +42,30 @@ where
     }
 
     #[inline(always)]
+    pub fn scan<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+        #[cfg(feature = "simd")]
+        {
+            self.scan_simd::<usize>(haystack)
+        }
+
+        #[cfg(not(feature = "simd"))]
+        {
+            self.scan_naive(haystack)
+        }
+    }
+
+    #[inline(always)]
     pub fn scan_naive<'a>(&self, mut haystack: &'a [u8]) -> &'a [u8] {
-        let mut j = 0;
-        while j < N {
-            if self.mask[j] {
-                // If our current pattern position is bigger than the length of the slice
-                // then this is not gonna work
-                if haystack.len() <= j {
-                    return &[];
-                }
-                if unsafe { haystack.get_unchecked(j).ne(self.pattern.get_unchecked(j)) } {
-                    haystack = &haystack[1..];
-                    j = 0;
-                    continue;
-                    // If TCO is available: return self.scan(&haystack[1..]);
-                }
+        while !haystack.is_empty() {
+            if unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }
+                .into_iter()
+                .zip(self.pattern)
+                .zip(self.mask)
+                .all(|((haystack, pattern), mask)| !mask || haystack == pattern)
+            {
+                break;
             }
-            j += 1;
+            haystack = &haystack[1..];
         }
         haystack
     }
@@ -70,7 +77,7 @@ where
         T: Bits + PrimInt,
         [(); T::BITS as usize]:,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
-        u64: From<T>,
+        usize: From<T>,
     {
         let bits: usize = T::BITS as usize;
 

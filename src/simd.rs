@@ -84,9 +84,10 @@ where
 ))]
 pub fn simd_match<M, const N: usize>(pattern: [u8; N], mask: M, data: [u8; N]) -> bool
 where
-    M: Into<u64>,
+    M: Into<usize>,
     LaneCount<N>: SupportedLaneCount,
 {
-    (!Mask::from_bitmask(mask.into()) | Simd::from_array(data).simd_eq(Simd::from_array(pattern)))
-        .all()
+    (!Mask::from_bitmask(mask.into() as u64)
+        | Simd::from_array(data).simd_eq(Simd::from_array(pattern)))
+    .all()
 }
