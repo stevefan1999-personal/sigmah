@@ -6,6 +6,7 @@
 #![feature(generic_const_exprs)]
 
 use bitvec::prelude::*;
+use multiversion::multiversion;
 
 #[cfg(feature = "simd")]
 use {
@@ -63,19 +64,48 @@ where
     }
 
     #[inline(always)]
-    pub fn scan_naive<'a>(&self, mut haystack: &'a [u8]) -> &'a [u8] {
-        while !haystack.is_empty() {
-            if unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }
-                .into_iter()
-                .zip(self.pattern)
-                .zip(self.mask)
-                .all(|((haystack, pattern), mask)| !mask || haystack == pattern)
-            {
-                break;
+    pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+        #[inline(always)]
+        #[multiversion(targets(
+            "x86_64+avx512bw",
+            "x86_64+avx2",
+            "x86_64+avx",
+            "x86_64+sse2",
+            "x86_64+sse",
+            "x86+avx512bw",
+            "x86+avx2",
+            "x86+avx",
+            "x86+sse2",
+            "x86+sse",
+            "aarch64+sve2",
+            "aarch64+sve",
+            "aarch64+neon",
+            "arm+neon",
+            "arm+vfp4",
+            "arm+vfp3",
+            "arm+vfp2",
+        ))]
+        fn scan_naive_inner<'a, const N: usize>(
+            this: &Signature<N>,
+            mut haystack: &'a [u8],
+        ) -> &'a [u8]
+        where
+            [(); N.div_ceil(u8::BITS as usize)]:,
+        {
+            while !haystack.is_empty() {
+                if unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }
+                    .into_iter()
+                    .zip(this.pattern)
+                    .zip(this.mask)
+                    .all(|((haystack, pattern), mask)| !mask || haystack == pattern)
+                {
+                    break;
+                }
+                haystack = &haystack[1..];
             }
-            haystack = &haystack[1..];
+            haystack
         }
-        haystack
+        scan_naive_inner::<N>(self, haystack)
     }
 
     #[cfg(feature = "simd")]
