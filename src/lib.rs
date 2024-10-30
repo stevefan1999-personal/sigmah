@@ -45,56 +45,47 @@ where
     }
 
     #[inline(always)]
-    pub fn scan<'a>(&self, mut haystack: &'a [u8]) -> &'a [u8] {
-        while !haystack.is_empty() {
-            if self.match_best_effort(haystack) {
-                break;
-            }
-            haystack = &haystack[1..];
-        }
-        haystack
+    pub fn scan<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+        self.scan_inner(haystack, Self::match_best_effort)
     }
 
     #[inline(always)]
-    pub fn scan_naive<'a>(&self, mut haystack: &'a [u8]) -> &'a [u8] {
-        while !haystack.is_empty() {
-            if self.match_naive(haystack) {
-                break;
-            }
-            haystack = &haystack[1..];
-        }
-        haystack
+    pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+        self.scan_inner(haystack, Self::match_naive)
     }
 
     #[cfg(feature = "simd")]
     #[inline(always)]
-    pub fn scan_simd<'a, T>(&self, mut haystack: &'a [u8]) -> &'a [u8]
+    pub fn scan_simd<'a, T>(&self, haystack: &'a [u8]) -> &'a [u8]
     where
         T: Bits + PrimInt,
         [(); T::BITS as usize]:,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
-        while !haystack.is_empty() {
-            if self.match_simd(haystack) {
-                break;
-            }
-            haystack = &haystack[1..];
-        }
-        haystack
+        self.scan_inner(haystack, Self::match_simd)
     }
 
     #[cfg(feature = "simd")]
     #[inline(always)]
-    pub fn scan_simd_select<'a, T>(&self, mut haystack: &'a [u8]) -> &'a [u8]
+    pub fn scan_simd_select<'a, T>(&self, haystack: &'a [u8]) -> &'a [u8]
     where
         T: Bits + PrimInt,
         [(); T::BITS as usize]:,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
+        self.scan_inner(haystack, Self::match_simd_select)
+    }
+
+    #[inline(always)]
+    fn scan_inner<'a>(
+        &self,
+        mut haystack: &'a [u8],
+        f: impl Fn(&Self, &'a [u8]) -> bool,
+    ) -> &'a [u8] {
         while !haystack.is_empty() {
-            if self.match_simd_select(haystack) {
+            if f(self, haystack) {
                 break;
             }
             haystack = &haystack[1..];
