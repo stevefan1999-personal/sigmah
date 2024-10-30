@@ -17,7 +17,7 @@ use multiversion::multiversion;
 /// ```
 #[inline(always)]
 #[multiversion(targets(
-    "x86_64+avx512bw",
+    "x86_64+avx512vl",
     "x86_64+avx2",
     "x86_64+avx",
     "x86_64+sse2",

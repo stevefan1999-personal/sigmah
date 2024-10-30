@@ -10,7 +10,10 @@ use multiversion::multiversion;
 
 #[cfg(feature = "simd")]
 use {
-    crate::{simd::simd_match, utils::Bits},
+    crate::{
+        simd::{simd_match, simd_match_select},
+        utils::Bits,
+    },
     core::simd::{LaneCount, SupportedLaneCount},
     num_traits::PrimInt,
 };
@@ -74,6 +77,24 @@ where
     {
         while !haystack.is_empty() {
             if self.match_simd(haystack) {
+                break;
+            }
+            haystack = &haystack[1..];
+        }
+        haystack
+    }
+
+    #[cfg(feature = "simd")]
+    #[inline(always)]
+    pub fn scan_simd_select<'a, T>(&self, mut haystack: &'a [u8]) -> &'a [u8]
+    where
+        T: Bits + PrimInt,
+        [(); T::BITS as usize]:,
+        LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
+        u64: From<T>,
+    {
+        while !haystack.is_empty() {
+            if self.match_simd_select(haystack) {
                 break;
             }
             haystack = &haystack[1..];
@@ -145,29 +166,66 @@ where
     pub fn match_simd<'a, T>(&self, haystack: &'a [u8]) -> bool
     where
         T: Bits + PrimInt,
-        [(); T::BITS as usize]:,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
-        let bits: usize = T::BITS as usize;
-
-        haystack
-            .chunks(bits)
-            .map(|x| unsafe { pad_zeroes_slice_unchecked::<{ T::BITS as usize }>(x) })
-            .zip(
-                self.pattern
-                    .chunks(bits)
-                    .map(|x| unsafe { pad_zeroes_slice_unchecked::<{ T::BITS as usize }>(x) }),
-            )
-            .zip(self.mask.chunks(bits))
-            .all(|((haystack, pattern), mask)| {
-                simd_match::<T, { T::BITS as usize }>(
+        self.iterate_simd(haystack)
+            .all(|(haystack, pattern, mask)| {
+                simd_match(
                     pattern,
                     mask.iter_ones()
                         .fold(T::zero(), |acc, x| acc | (T::one() << x)),
                     haystack,
                 )
             })
+    }
+
+    #[cfg(feature = "simd")]
+    #[inline(always)]
+    pub fn match_simd_select<'a, T>(&self, haystack: &'a [u8]) -> bool
+    where
+        T: Bits + PrimInt,
+        LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
+        u64: From<T>,
+    {
+        self.iterate_simd(haystack)
+            .all(|(haystack, pattern, mask)| {
+                simd_match_select(
+                    pattern,
+                    mask.iter_ones()
+                        .fold(T::zero(), |acc, x| acc | (T::one() << x)),
+                    haystack,
+                )
+            })
+    }
+
+    #[cfg(feature = "simd")]
+    #[inline(always)]
+    pub fn iterate_simd<'a, T>(
+        &'a self,
+        haystack: &'a [u8],
+    ) -> impl Iterator<
+        Item = (
+            [u8; T::BITS as usize],
+            [u8; T::BITS as usize],
+            &'a BitSlice<u8>,
+        ),
+    >
+    where
+        T: Bits + PrimInt,
+    {
+        let bits: usize = T::BITS as usize;
+
+        haystack
+            .chunks(bits)
+            .map(|x| unsafe { pad_zeroes_slice_unchecked(x) })
+            .zip(
+                self.pattern
+                    .chunks(bits)
+                    .map(|x| unsafe { pad_zeroes_slice_unchecked(x) }),
+            )
+            .zip(self.mask.chunks(bits))
+            .map(|((a, b), c)| (a, b, c))
     }
 }
 
