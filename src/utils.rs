@@ -16,4 +16,4 @@ pub fn are_all_elements_equal<T: PartialEq>(elems: &[T]) -> bool {
 }
 
 #[cfg(feature = "simd")]
-pub mod simd;
+pub(crate) mod simd;

@@ -350,6 +350,5 @@ where
     }
 }
 
+pub(crate) mod multiversion;
 pub(crate) mod utils;
-
-mod multiversion;

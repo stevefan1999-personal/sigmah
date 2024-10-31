@@ -70,7 +70,8 @@ pub fn equal_then_find_first_position_naive(first: u8, window: &[u8]) -> Option<
     window.into_iter().position(|&x| x == first)
 }
 
-pub mod simd;
+#[cfg(feature = "simd")]
+pub(crate) mod simd;
 
 #[cfg(test)]
 mod tests;
