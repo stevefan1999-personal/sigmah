@@ -79,18 +79,18 @@ where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
     #[inline(always)]
-    pub fn scan<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+    pub fn scan<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, Self::match_best_effort)
     }
 
     #[inline(always)]
-    pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+    pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, Self::match_naive)
     }
 
     #[cfg(feature = "simd")]
     #[inline(always)]
-    pub fn scan_simd<'a, T>(&self, haystack: &'a [u8]) -> &'a [u8]
+    pub fn scan_simd<'a, T>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
         T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
@@ -101,7 +101,7 @@ where
 
     #[cfg(feature = "simd")]
     #[inline(always)]
-    pub fn scan_simd_select<'a, T>(&self, haystack: &'a [u8]) -> &'a [u8]
+    pub fn scan_simd_select<'a, T>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
         T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
@@ -113,16 +113,20 @@ where
     #[inline(always)]
     fn scan_inner<'a>(
         &self,
-        mut haystack: &'a [u8],
-        f: impl Fn(&Self, &'a [u8]) -> bool,
-    ) -> &'a [u8] {
-        while !haystack.is_empty() {
-            if f(self, haystack) {
-                break;
+        haystack: &'a [u8],
+        f: impl Fn(&Self, &[u8]) -> bool,
+    ) -> Option<&'a [u8]> {
+        if haystack.len() < N {
+            f(self, unsafe { &pad_zeroes_slice_unchecked::<N>(haystack) }).then_some(haystack)
+        } else {
+            let mut window = haystack.windows(N);
+            while let Some(haystack_window) = window.next() {
+                if f(self, haystack_window) {
+                    return Some(haystack_window);
+                }
             }
-            haystack = &haystack[1..];
+            None
         }
-        haystack
     }
 }
 
