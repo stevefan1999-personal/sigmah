@@ -35,7 +35,7 @@ use multiversion::multiversion;
     "arm+vfp3",
     "arm+vfp2",
 ))]
-pub fn simd_match_select<M, const N: usize>(pattern: [u8; N], mask: M, data: [u8; N]) -> bool
+pub fn simd_match_select<M, const N: usize>(pattern: [u8; N], data: [u8; N], mask: M) -> bool
 where
     M: Into<u64>,
     LaneCount<N>: SupportedLaneCount,
@@ -82,7 +82,7 @@ where
     "arm+vfp3",
     "arm+vfp2",
 ))]
-pub fn simd_match<M, const N: usize>(pattern: [u8; N], mask: M, data: [u8; N]) -> bool
+pub fn simd_match<M, const N: usize>(pattern: [u8; N], data: [u8; N], mask: M) -> bool
 where
     M: Into<u64>,
     LaneCount<N>: SupportedLaneCount,

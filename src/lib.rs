@@ -138,14 +138,17 @@ where
     pub fn match_best_effort(&self, haystack: &[u8]) -> bool {
         #[cfg(feature = "simd")]
         {
-            if N > 32 {
+            if N >= 64 {
                 self.match_simd::<u64>(haystack)
-            } else if N > 16 {
+            } else if N >= 32 {
                 self.match_simd::<u32>(haystack)
-            } else if N > 8 {
+            } else if N >= 16 {
                 self.match_simd::<u16>(haystack)
-            } else {
+            } else if N >= 8 {
                 self.match_simd::<u8>(haystack)
+            } else {
+                // for the lulz
+                self.match_naive(haystack)
             }
         }
 
@@ -175,15 +178,15 @@ where
             "arm+vfp3",
             "arm+vfp2",
         ))]
-        fn match_naive_inner<'a, const N: usize>(this: &Signature<N>, haystack: &'a [u8]) -> bool
+        fn match_naive_inner<const N: usize>(this: &Signature<N>, haystack: &[u8]) -> bool
         where
             [(); N.div_ceil(u8::BITS as usize)]:,
         {
-            unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }
+            haystack
                 .into_iter()
                 .zip(this.pattern)
                 .zip(this.mask)
-                .all(|((haystack, pattern), mask)| !mask || haystack == pattern)
+                .all(|((haystack, pattern), mask)| !mask || *haystack == pattern)
         }
         match_naive_inner::<N>(self, haystack)
     }
@@ -196,15 +199,7 @@ where
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
-        self.iterate_simd(haystack)
-            .all(|(haystack, pattern, mask)| {
-                simd_match(
-                    pattern,
-                    mask.iter_ones()
-                        .fold(T::zero(), |acc, x| acc | (T::one() << x)),
-                    haystack,
-                )
-            })
+        self.match_simd_inner(haystack, simd_match)
     }
 
     #[cfg(feature = "simd")]
@@ -215,13 +210,28 @@ where
         LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
         u64: From<T>,
     {
+        self.match_simd_inner(haystack, simd_match_select)
+    }
+
+    #[cfg(feature = "simd")]
+    #[inline(always)]
+    pub fn match_simd_inner<T>(
+        &self,
+        haystack: &[u8],
+        f: impl Fn([u8; T::BITS as usize], [u8; T::BITS as usize], T) -> bool,
+    ) -> bool
+    where
+        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
+        LaneCount<{ T::BITS as usize }>: SupportedLaneCount,
+        u64: From<T>,
+    {
         self.iterate_simd(haystack)
             .all(|(haystack, pattern, mask)| {
-                simd_match_select(
+                f(
                     pattern,
+                    haystack,
                     mask.iter_ones()
                         .fold(T::zero(), |acc, x| acc | (T::one() << x)),
-                    haystack,
                 )
             })
     }
