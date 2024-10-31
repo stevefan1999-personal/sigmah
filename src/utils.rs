@@ -6,32 +6,14 @@ pub const unsafe fn pad_zeroes_slice_unchecked<const N: usize>(arr: &[u8]) -> [u
     arr_
 }
 
-#[cfg(feature = "simd")]
-pub trait Bits {
-    const BITS: u32;
+#[cfg(test)]
+pub fn are_all_elements_equal<T: PartialEq>(elems: &[T]) -> bool {
+    let [head, tail @ ..] = elems else {
+        return false;
+    };
+
+    tail.iter().all(|x| x == head)
 }
 
 #[cfg(feature = "simd")]
-impl Bits for u8 {
-    const BITS: u32 = u8::BITS;
-}
-
-#[cfg(feature = "simd")]
-impl Bits for u16 {
-    const BITS: u32 = u16::BITS;
-}
-
-#[cfg(feature = "simd")]
-impl Bits for u32 {
-    const BITS: u32 = u32::BITS;
-}
-
-#[cfg(feature = "simd")]
-impl Bits for u64 {
-    const BITS: u32 = u64::BITS;
-}
-
-#[cfg(feature = "simd")]
-impl Bits for usize {
-    const BITS: u32 = usize::BITS;
-}
+pub mod simd;
