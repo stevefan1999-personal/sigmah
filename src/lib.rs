@@ -253,14 +253,17 @@ where
     {
         let bits: usize = T::BITS as usize;
 
-        haystack
+        let haystack_chunks_aligned = haystack
             .chunks(bits)
-            .map(|x| unsafe { pad_zeroes_slice_unchecked(x) })
-            .zip(
-                self.pattern
-                    .chunks(bits)
-                    .map(|x| unsafe { pad_zeroes_slice_unchecked(x) }),
-            )
+            .map(|x| unsafe { pad_zeroes_slice_unchecked(x) });
+
+        let pattern_chunks_aligned = self
+            .pattern
+            .chunks(bits)
+            .map(|x| unsafe { pad_zeroes_slice_unchecked(x) });
+
+        haystack_chunks_aligned
+            .zip(pattern_chunks_aligned)
             .zip(self.mask.chunks(bits))
             .map(|((a, b), c)| (a, b, c))
     }
