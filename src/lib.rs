@@ -27,38 +27,38 @@ use crate::utils::pad_zeroes_slice_unchecked;
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[repr(C, align(1))]
-pub struct Signature<const N: usize>
+#[repr(transparent)]
+pub struct SignatureMask<const N: usize>(BitArray<[u8; N.div_ceil(u8::BITS as usize)]>)
+where
+    [(); N.div_ceil(u8::BITS as usize)]:;
+
+impl<const N: usize> SignatureMask<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
-    #[cfg_attr(feature = "serde", serde(with = "serde_big_array::BigArray"))]
-    pub pattern: [u8; N],
-    pub mask: BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
-}
-
-impl<const N: usize> Signature<N>
-where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-{
-    #[inline(always)]
-    pub const fn from_pattern_mask(pattern: [u8; N], mask: [u8; N]) -> Self {
-        Self {
-            pattern,
-            mask: Self::from_bstring_mask_array_to_bitarr(mask),
-        }
-    }
-
-    // Notice we cannot use From<([u8; N], [u8; N])> because it will break const guarantee
+    pub const MAX: Self = Self(BitArray {
+        data: [u8::MAX; N.div_ceil(u8::BITS as usize)],
+        ..BitArray::ZERO
+    });
 
     #[inline(always)]
-    pub const fn from_pattern_mask_tuple((pattern, mask): ([u8; N], [u8; N])) -> Self {
-        Self::from_pattern_mask(pattern, mask)
+    pub const fn from_bstring_mask_array(pattern: [u8; N]) -> Self {
+        Self(Self::from_bstring_mask_array_to_bitarr(pattern))
     }
 
     #[inline(always)]
-    pub const fn from_option_array(needle: [Option<u8>; N]) -> Self {
-        unsafe { Self::from_option_slice_unchecked(&needle) }
+    pub const fn from_bstring_mask_slice(pattern: &[u8; N]) -> Self {
+        Self(unsafe { Self::from_bstring_mask_slice_to_bitarr_unchecked(pattern) })
+    }
+
+    #[inline(always)]
+    pub const fn from_boolean_mask_array(pattern: [bool; N]) -> Self {
+        Self(Self::from_boolean_mask_array_to_bitarr(pattern))
+    }
+
+    #[inline(always)]
+    pub const fn from_boolean_mask_slice(pattern: &[bool; N]) -> Self {
+        Self(unsafe { Self::from_boolean_mask_slice_to_bitarr_unchecked(pattern) })
     }
 
     #[inline(always)]
@@ -76,19 +76,106 @@ where
     }
 
     #[inline(always)]
+    pub const unsafe fn from_bstring_mask_slice_to_bitarr_unchecked(
+        pattern: &[u8; N],
+    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
+        let mut pattern_bool: [bool; N] = [false; N];
+        let mut i = 0;
+        while i < pattern.len() {
+            pattern_bool[i] = match pattern[i] {
+                b'x' => true,
+                b'?' => false,
+                _ => panic!("unknown character in pattern"),
+            };
+            i += 1;
+        }
+        Self::from_boolean_mask_slice_to_bitarr_unchecked(&pattern_bool)
+    }
+
+    #[inline(always)]
+    pub const unsafe fn from_boolean_mask_slice_to_bitarr_unchecked(
+        pattern: &[bool; N],
+    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
+        let mut arr: BitArray<[u8; N.div_ceil(u8::BITS as usize)]> = BitArray::ZERO;
+        let mut i = 0;
+        while i < pattern.len() {
+            if pattern[i] {
+                const BITS: usize = u8::BITS as usize;
+                arr.data[i / BITS] |= 1 << (i % BITS);
+            }
+            i += 1;
+        }
+        arr
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[repr(C, align(1))]
+pub struct Signature<const N: usize>
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
+    #[cfg_attr(feature = "serde", serde(with = "serde_big_array::BigArray"))]
+    pub pattern: [u8; N],
+    pub mask: SignatureMask<N>,
+}
+
+impl<const N: usize> Signature<N>
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
+    #[inline(always)]
+    pub const fn from_pattern_mask(pattern: [u8; N], mask: [u8; N]) -> Self {
+        Self {
+            pattern,
+            mask: SignatureMask::from_bstring_mask_array(mask),
+        }
+    }
+
+    // Notice we cannot use From<([u8; N], [u8; N])> because it will break const guarantee
+
+    #[inline(always)]
+    pub const fn from_pattern_mask_tuple((pattern, mask): ([u8; N], [u8; N])) -> Self {
+        Self::from_pattern_mask(pattern, mask)
+    }
+
+    #[inline(always)]
+    pub const fn from_option_array(needle: [Option<u8>; N]) -> Self {
+        unsafe { Self::from_option_slice_unchecked(&needle) }
+    }
+
+    #[inline(always)]
     pub const fn from_array_with_exact_match_mask(pattern: [u8; N]) -> Self {
         Self {
             pattern,
-            mask: BitArray {
-                data: [u8::MAX; N.div_ceil(u8::BITS as usize)],
-                ..BitArray::ZERO
-            },
+            mask: SignatureMask::MAX,
         }
     }
 
     #[inline(always)]
     pub const fn from_slice_with_exact_match_mask(pattern: &[u8; N]) -> Self {
         Self::from_array_with_exact_match_mask(*pattern)
+    }
+
+    #[inline(always)]
+    pub const unsafe fn from_option_slice_unchecked(needle: &[Option<u8>]) -> Self {
+        let mut needle_: [u8; N] = [0; N];
+        let mut pattern: [bool; N] = [false; N];
+        let mut i = 0;
+        while i < needle.len() {
+            if let Some(x) = needle[i] {
+                needle_[i] = x;
+                pattern[i] = true;
+            } else {
+                pattern[i] = false;
+            }
+            i += 1;
+        }
+        Self {
+            pattern: needle_,
+            mask: SignatureMask::from_boolean_mask_array(pattern),
+        }
     }
 }
 
@@ -104,7 +191,7 @@ where
     #[inline]
     pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, |chunk| {
-            match_naive_directly(chunk, self.pattern, self.mask)
+            match_naive_directly(chunk, self.pattern, &self.mask.0)
         })
     }
 
@@ -114,7 +201,7 @@ where
         mut haystack: &'a [u8],
         f: impl Fn(&[u8; N]) -> bool,
     ) -> Option<&'a [u8]> {
-        let exact_match = self.mask[..N].all();
+        let exact_match = self.mask.0[..N].all();
 
         if haystack.len() < N {
             if exact_match {
@@ -147,9 +234,9 @@ where
                 // so it is a potential search point. If all that is in the Z box are 0, then we are safe to assume all patterns are unique and need one-by-one brute force.
                 // Technically speaking, if we repeat this process to each shift of the window with respect to its mask position, we can obtain the Z-box algorithm as well
                 //
-                // If in SIMD manner, we can first take the first character, splat it to vector width and match it with the haystack window after first element, 
+                // If in SIMD manner, we can first take the first character, splat it to vector width and match it with the haystack window after first element,
                 // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
-                let potential_position_after_first = if self.mask[0] && !haystack_smaller_than_n {
+                let potential_position_after_first = if self.mask.0[0] && !haystack_smaller_than_n {
                     self.equal_then_find_first_position(self.pattern[0], &window[1..])
                         .unwrap_or(N - 1)
                 } else {
@@ -217,7 +304,7 @@ where
 
     #[inline]
     pub fn match_naive(&self, chunk: &[u8; N]) -> bool {
-        match_naive_directly(chunk, self.pattern, self.mask)
+        match_naive_directly(chunk, self.pattern, &self.mask.0)
     }
 }
 
@@ -281,7 +368,7 @@ where
         LaneCount<{ T::BITS }>: SupportedLaneCount,
         u64: From<T>,
     {
-        iterate_haystack_pattern_mask_aligned_simd(chunk, &self.pattern, &self.mask).all(
+        iterate_haystack_pattern_mask_aligned_simd(chunk, &self.pattern, &self.mask.0).all(
             |(haystack, pattern, mask)| {
                 f(
                     pattern,
@@ -291,64 +378,6 @@ where
                 )
             },
         )
-    }
-}
-
-impl<const N: usize> Signature<N>
-where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-{
-    #[inline(always)]
-    pub const unsafe fn from_option_slice_unchecked(needle: &[Option<u8>]) -> Self {
-        let mut needle_: [u8; N] = [0; N];
-        let mut pattern: [bool; N] = [false; N];
-        let mut i = 0;
-        while i < needle.len() {
-            if let Some(x) = needle[i] {
-                needle_[i] = x;
-                pattern[i] = true;
-            } else {
-                pattern[i] = false;
-            }
-            i += 1;
-        }
-        Self {
-            pattern: needle_,
-            mask: Self::from_boolean_mask_slice_to_bitarr_unchecked(&pattern),
-        }
-    }
-
-    #[inline(always)]
-    pub const unsafe fn from_bstring_mask_slice_to_bitarr_unchecked(
-        pattern: &[u8; N],
-    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        let mut pattern_bool: [bool; N] = [false; N];
-        let mut i = 0;
-        while i < pattern.len() {
-            pattern_bool[i] = match pattern[i] {
-                b'x' => true,
-                b'?' => false,
-                _ => panic!("unknown character in pattern"),
-            };
-            i += 1;
-        }
-        Self::from_boolean_mask_slice_to_bitarr_unchecked(&pattern_bool)
-    }
-
-    #[inline(always)]
-    pub const unsafe fn from_boolean_mask_slice_to_bitarr_unchecked(
-        pattern: &[bool; N],
-    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        let mut arr: BitArray<[u8; N.div_ceil(u8::BITS as usize)]> = BitArray::ZERO;
-        let mut i = 0;
-        while i < pattern.len() {
-            if pattern[i] {
-                const BITS: usize = u8::BITS as usize;
-                arr.data[i / BITS] |= 1 << (i % BITS);
-            }
-            i += 1;
-        }
-        arr
     }
 }
 

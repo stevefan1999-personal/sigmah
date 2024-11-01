@@ -1,4 +1,4 @@
-use bitvec::array::BitArray;
+use bitvec::slice::BitSlice;
 use multiversion::multiversion;
 
 /// Computes the result with the given the formula:
@@ -36,7 +36,7 @@ use multiversion::multiversion;
 pub fn match_naive_directly<const N: usize>(
     chunk: &[u8; N],
     pattern: [u8; N],
-    mask: BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
+    mask: &BitSlice<u8>,
 ) -> bool
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
