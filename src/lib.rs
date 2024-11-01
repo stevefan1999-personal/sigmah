@@ -137,6 +137,19 @@ where
         }
         arr
     }
+
+    pub const fn all(&self) -> bool {
+        let mut i = 0;
+        while i < N {
+            const BITS: usize = u8::BITS as usize;
+            let bit = 1 << (i % BITS);
+            if (self.0.data[i / BITS] & bit) != bit {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -231,7 +244,7 @@ where
         mut haystack: &'a [u8],
         f: impl Fn(&[u8; N]) -> bool,
     ) -> Option<&'a [u8]> {
-        let exact_match = self.mask.0[..N].all();
+        let exact_match = self.mask.all();
 
         if haystack.len() < N {
             if exact_match {
