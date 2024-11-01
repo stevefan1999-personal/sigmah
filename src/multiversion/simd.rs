@@ -47,7 +47,7 @@ where
 {
     Mask::from_bitmask(mask.into())
         .select_mask(
-            Simd::from_slice(data).simd_eq(Simd::from_slice(pattern)),
+            Simd::from_array(*data).simd_eq(Simd::from_array(*pattern)),
             Mask::from_bitmask(u64::MAX),
         )
         .all()
@@ -81,7 +81,7 @@ pub fn match_simd_core<const N: usize>(
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    (!Mask::from_bitmask(mask.into()) | Simd::from_slice(data).simd_eq(Simd::from_slice(pattern)))
+    (!Mask::from_bitmask(mask.into()) | Simd::from_array(*data).simd_eq(Simd::from_array(*pattern)))
         .all()
 }
 
@@ -112,7 +112,7 @@ pub fn equal_then_find_first_position_simd_core<const N: usize>(
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    Simd::from_slice(window).simd_eq(first).first_set()
+    Simd::from_array(*window).simd_eq(first).first_set()
 }
 
 #[inline(always)]
@@ -185,7 +185,7 @@ pub fn equal_then_find_second_position_simd_core<const N: usize>(
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    (Simd::from_slice(window).simd_eq(first) & Mask::from_bitmask((i64::MAX - 1) as u64))
+    (Simd::from_array(*window).simd_eq(first) & Mask::from_bitmask((i64::MAX - 1) as u64))
         .first_set()
 }
 

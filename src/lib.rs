@@ -297,8 +297,9 @@ where
                 //
                 // If in SIMD manner, we can first take the first character, splat it to vector width and match it with the haystack window after first element,
                 // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
-                let move_position = if self.mask.0[0] && !haystack_smaller_than_n {
-                    let first = self.pattern[0];
+                let move_position =
+                    if unsafe { *self.mask.0.get_unchecked(0) } && !haystack_smaller_than_n {
+                        let first = unsafe { *self.pattern.get_unchecked(0) };
 
                     let potential_position_after_first = {
                         #[cfg(feature = "simd")]
@@ -337,7 +338,7 @@ where
                     1
                 };
 
-                haystack = &haystack[move_position..];
+                haystack = unsafe { haystack.get_unchecked(move_position..) };
             }
             None
         }
