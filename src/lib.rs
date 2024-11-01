@@ -243,12 +243,12 @@ where
     [(); N.div_ceil(u8::BITS as usize)]:,
     [(); N - 1]:,
 {
-    #[inline]
+    #[inline(always)]
     pub fn scan<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, |chunk| self.match_best_effort(chunk))
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, |chunk| {
             match_naive_directly(chunk, self.pattern, &self.mask.0)
@@ -318,7 +318,7 @@ impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
-    #[inline]
+    #[inline(always)]
     pub fn match_best_effort(&self, chunk: [u8; N]) -> bool {
         #[cfg(feature = "simd")]
         {
@@ -342,7 +342,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn equal_then_find_first_position(&self, first: u8, window: [u8; N - 1]) -> Option<usize> {
         #[cfg(feature = "simd")]
         {
@@ -366,7 +366,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn match_naive(&self, chunk: [u8; N]) -> bool {
         match_naive_directly(chunk, self.pattern, &self.mask.0)
     }
@@ -377,7 +377,7 @@ impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
-    #[inline]
+    #[inline(always)]
     pub fn scan_simd<'a, T>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
         T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
@@ -388,7 +388,7 @@ where
         self.scan_inner(haystack, |chunk| self.match_simd(chunk))
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn scan_simd_select<'a, T>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
         T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
@@ -399,7 +399,7 @@ where
         self.scan_inner(haystack, |chunk| self.match_simd_select(chunk))
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn match_simd<T>(&self, chunk: [u8; N]) -> bool
     where
         T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
@@ -409,7 +409,7 @@ where
         self.match_simd_inner(chunk, match_simd_core)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn match_simd_select<T>(&self, chunk: [u8; N]) -> bool
     where
         T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
@@ -419,7 +419,7 @@ where
         self.match_simd_inner(chunk, match_simd_select_core)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn match_simd_inner<T>(
         &self,
         chunk: [u8; N],
