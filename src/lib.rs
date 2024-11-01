@@ -5,21 +5,28 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use crate::multiversion::{equal_then_find_second_position_naive, match_naive_directly};
+use crate::multiversion::{equal_then_find_second_position_simple, match_naive};
+
 use bitvec::prelude::*;
+
+#[cfg(all(feature = "rayon", feature = "simd"))]
+use {
+    arrayvec::ArrayVec,
+    rayon::{
+        iter::{IndexedParallelIterator, IntoParallelIterator},
+        prelude::*,
+    },
+};
 
 #[cfg(feature = "simd")]
 use {
-    crate::{
-        multiversion::simd::{
-            equal_then_find_second_position_simd, match_simd_core, match_simd_select_core,
-        },
-        utils::simd::SimdBits,
+    crate::multiversion::simd::{
+        equal_then_find_second_position_simd, match_simd_core, match_simd_select_core,
     },
     core::simd::{LaneCount, SupportedLaneCount},
 };
 
-use crate::utils::pad_zeroes_slice_unchecked;
+use crate::utils::{pad_zeroes_slice_unchecked, simd::SimdBits};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -241,6 +248,10 @@ where
 impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
+    [(); N.div_ceil(u64::LANES)]:,
+    [(); N.div_ceil(u32::LANES)]:,
+    [(); N.div_ceil(u16::LANES)]:,
+    [(); N.div_ceil(u8::LANES)]:,
 {
     pub fn scan<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, |chunk| self.match_best_effort(chunk))
@@ -248,7 +259,7 @@ where
 
     pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, |chunk| {
-            match_naive_directly(chunk, &self.pattern, &self.mask.0)
+            match_naive(chunk, &self.pattern, &self.mask.0)
         })
     }
 
@@ -256,7 +267,7 @@ where
     fn scan_inner<'a>(
         &self,
         mut haystack: &'a [u8],
-        f: impl Fn(&[u8]) -> bool,
+        f: impl Fn(&[u8; N]) -> bool,
     ) -> Option<&'a [u8]> {
         let exact_match = self.mask.is_exact();
 
@@ -274,10 +285,12 @@ where
                     return None;
                 }
 
-                let window = if haystack_smaller_than_n {
-                    &unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }
-                } else {
-                    haystack
+                let window: &[u8; N] = unsafe {
+                    if haystack_smaller_than_n {
+                        &pad_zeroes_slice_unchecked::<N>(haystack)
+                    } else {
+                        core::mem::transmute_copy(&haystack)
+                    }
                 };
 
                 if f(window) {
@@ -301,33 +314,11 @@ where
                 // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
                 let move_position =
                     if unsafe { *self.mask.0.get_unchecked(0) } && !haystack_smaller_than_n {
-                        let first = unsafe { *self.pattern.get_unchecked(0) };
-
-                        let potential_position_after_first = {
-                            #[cfg(feature = "simd")]
-                            {
-                                {
-                                    if N >= 64 {
-                                        equal_then_find_second_position_simd::<u64>(first, window)
-                                    } else if N >= 32 {
-                                        equal_then_find_second_position_simd::<u32>(first, window)
-                                    } else if N >= 16 {
-                                        equal_then_find_second_position_simd::<u16>(first, window)
-                                    } else if N >= 8 {
-                                        equal_then_find_second_position_simd::<u8>(first, window)
-                                    } else {
-                                        // for the lulz
-                                        equal_then_find_second_position_naive(first, window)
-                                    }
-                                }
-                            }
-
-                            #[cfg(not(feature = "simd"))]
-                            {
-                                equal_then_find_second_position_naive(first, &window)
-                            }
-                        };
-                        potential_position_after_first.unwrap_or(N)
+                        self.equal_then_find_second_position(
+                            unsafe { *self.pattern.get_unchecked(0) },
+                            window,
+                        )
+                        .unwrap_or(N)
                     } else {
                         1
                     };
@@ -336,14 +327,41 @@ where
             None
         }
     }
+
+    fn equal_then_find_second_position(&self, first: u8, window: &[u8; N]) -> Option<usize> {
+        #[cfg(feature = "simd")]
+        {
+            if N >= 64 {
+                equal_then_find_second_position_simd::<u64, N>(first, window)
+            } else if N >= 32 {
+                equal_then_find_second_position_simd::<u32, N>(first, window)
+            } else if N >= 16 {
+                equal_then_find_second_position_simd::<u16, N>(first, window)
+            } else if N >= 8 {
+                equal_then_find_second_position_simd::<u8, N>(first, window)
+            } else {
+                // for the lulz
+                equal_then_find_second_position_simple(first, window)
+            }
+        }
+
+        #[cfg(not(feature = "simd"))]
+        {
+            equal_then_find_second_position_simple(first, &window)
+        }
+    }
 }
 
 impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
+    [(); N.div_ceil(u64::LANES)]:,
+    [(); N.div_ceil(u32::LANES)]:,
+    [(); N.div_ceil(u16::LANES)]:,
+    [(); N.div_ceil(u8::LANES)]:,
 {
     #[inline(always)]
-    pub fn match_best_effort(&self, chunk: &[u8]) -> bool {
+    pub fn match_best_effort(&self, chunk: &[u8; N]) -> bool {
         #[cfg(feature = "simd")]
         {
             if N >= 64 {
@@ -367,8 +385,8 @@ where
     }
 
     #[inline(always)]
-    pub fn match_naive(&self, chunk: &[u8]) -> bool {
-        match_naive_directly(chunk, &self.pattern, &self.mask.0)
+    pub fn match_naive(&self, chunk: &[u8; N]) -> bool {
+        match_naive(chunk, &self.pattern, &self.mask.0)
     }
 }
 
@@ -376,90 +394,158 @@ where
 impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
+    [(); N.div_ceil(u64::LANES)]:,
+    [(); N.div_ceil(u32::LANES)]:,
+    [(); N.div_ceil(u16::LANES)]:,
+    [(); N.div_ceil(u8::LANES)]:,
 {
     #[inline(always)]
     pub fn scan_simd<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
         LaneCount<{ T::LANES }>: SupportedLaneCount,
+        [(); N.div_ceil(T::LANES)]:,
     {
-        self.scan_inner(haystack, |chunk| self.match_simd(chunk))
+        let f = |chunk: &[u8; N]| self.match_simd(chunk);
+        self.scan_inner(haystack, f)
     }
 
     #[inline(always)]
     pub fn scan_simd_select<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
         LaneCount<{ T::LANES }>: SupportedLaneCount,
+        [(); N.div_ceil(T::LANES)]:,
     {
-        self.scan_inner(haystack, |chunk| self.match_simd_select(chunk))
+        let f = |chunk: &[u8; N]| self.match_simd_select(chunk);
+        self.scan_inner(haystack, f)
     }
 
     #[inline(always)]
-    pub fn match_simd<T: SimdBits>(&self, chunk: &[u8]) -> bool
+    pub fn match_simd<T: SimdBits>(&self, chunk: &[u8; N]) -> bool
     where
         LaneCount<{ T::LANES }>: SupportedLaneCount,
+        [(); N.div_ceil(T::LANES)]:,
     {
-        self.match_simd_inner(chunk, |haystack, pattern, mask: T| {
-            let haystack = unsafe {
-                if haystack.len() < T::LANES {
-                    &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
-                } else {
-                    <&[u8; T::LANES]>::try_from(haystack).unwrap_unchecked()
-                }
-            };
+        #[cfg(feature = "rayon")]
+        {
+            self.match_simd_rayon_inner(chunk, match_simd_core)
+        }
 
-            let pattern = unsafe {
-                if pattern.len() < T::LANES {
-                    &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
-                } else {
-                    <&[u8; T::LANES]>::try_from(pattern).unwrap_unchecked()
-                }
-            };
-            match_simd_core(haystack, pattern, mask.to_u64())
-        })
+        #[cfg(not(feature = "rayon"))]
+        {
+            self.match_simd_simple_inner(chunk, match_simd_core)
+        }
     }
 
     #[inline(always)]
-    pub fn match_simd_select<T: SimdBits>(&self, chunk: &[u8]) -> bool
+    pub fn match_simd_select<T: SimdBits>(&self, chunk: &[u8; N]) -> bool
     where
         LaneCount<{ T::LANES }>: SupportedLaneCount,
+        [(); N.div_ceil(T::LANES)]:,
     {
-        self.match_simd_inner(chunk, |haystack, pattern, mask: T| {
-            let haystack = unsafe {
-                if haystack.len() < T::LANES {
-                    &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
-                } else {
-                    <&[u8; T::LANES]>::try_from(haystack).unwrap_unchecked()
-                }
-            };
+        #[cfg(feature = "rayon")]
+        {
+            self.match_simd_rayon_inner(chunk, match_simd_select_core)
+        }
 
-            let pattern = unsafe {
-                if pattern.len() < T::LANES {
-                    &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
-                } else {
-                    <&[u8; T::LANES]>::try_from(pattern).unwrap_unchecked()
-                }
-            };
-
-            match_simd_select_core(haystack, pattern, mask.to_u64())
-        })
+        #[cfg(not(feature = "rayon"))]
+        {
+            self.match_simd_simple_inner(chunk, match_simd_select_core)
+        }
     }
 
     #[inline(always)]
-    pub fn match_simd_inner<T: SimdBits>(
+    pub fn match_simd_simple_inner<T: SimdBits>(
         &self,
         chunk: &[u8],
-        f: impl Fn(&[u8], &[u8], T) -> bool,
-    ) -> bool {
+        f: impl Fn(&[u8; T::LANES], &[u8; T::LANES], u64) -> bool + Sync,
+    ) -> bool
+    where
+        [(); T::LANES]:,
+    {
         chunk
             .chunks(T::LANES)
             .zip(self.pattern.chunks(T::LANES))
-            .zip(self.mask.0.chunks(T::LANES))
-            .all(|((haystack, pattern), mask)| {
-                f(
-                    haystack,
-                    pattern,
-                    mask.iter_ones().fold(T::ZERO, |acc, x| acc | (T::ONE << x)),
-                )
+            .zip(
+                self.mask
+                    .0
+                    .chunks(T::LANES)
+                    .map(|mask| mask.iter_ones().fold(T::ZERO, |acc, x| acc | (T::ONE << x))),
+            )
+            .all(|((haystack, pattern), ref mask)| {
+                let haystack = unsafe {
+                    if haystack.len() < T::LANES {
+                        &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
+                    } else {
+                        <&[u8; T::LANES]>::try_from(haystack).unwrap_unchecked()
+                    }
+                };
+
+                let pattern = unsafe {
+                    if pattern.len() < T::LANES {
+                        &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
+                    } else {
+                        <&[u8; T::LANES]>::try_from(pattern).unwrap_unchecked()
+                    }
+                };
+                f(haystack, pattern, mask.to_u64())
+            })
+    }
+}
+
+#[cfg(all(feature = "simd", feature = "rayon"))]
+impl<const N: usize> Signature<N>
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
+    #[inline(always)]
+    pub fn match_simd_rayon<T: SimdBits>(&self, chunk: &[u8; N]) -> bool
+    where
+        LaneCount<{ T::LANES }>: SupportedLaneCount,
+        [(); N.div_ceil(T::LANES)]:,
+    {
+        self.match_simd_rayon_inner(chunk, match_simd_core)
+    }
+
+    #[inline(always)]
+    pub fn match_simd_rayon_inner<T: SimdBits>(
+        &self,
+        chunk: &[u8; N],
+        f: impl Fn(&[u8; T::LANES], &[u8; T::LANES], u64) -> bool + Sync,
+    ) -> bool
+    where
+        [(); N.div_ceil(T::LANES)]:,
+    {
+        let chunks: Vec<&[u8]> = chunk.chunks(T::LANES).collect();
+        let patterns: ArrayVec<&[u8], { N.div_ceil(T::LANES) }> =
+            self.pattern.chunks(T::LANES).collect();
+        let masks = self
+            .mask
+            .0
+            .chunks(T::LANES)
+            .map(|mask| mask.iter_ones().fold(T::ZERO, |acc, x| acc | (T::ONE << x)))
+            .collect::<ArrayVec<T, { N.div_ceil(T::LANES) }>>();
+
+        chunks
+            .into_par_iter()
+            .zip(patterns.into_par_iter())
+            .zip(masks.into_par_iter())
+            .all(|((haystack, &pattern), mask)| {
+                let haystack = unsafe {
+                    if haystack.len() < T::LANES {
+                        &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
+                    } else {
+                        <&[u8; T::LANES]>::try_from(haystack).unwrap_unchecked()
+                    }
+                };
+
+                let pattern = unsafe {
+                    if pattern.len() < T::LANES {
+                        &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
+                    } else {
+                        <&[u8; T::LANES]>::try_from(pattern).unwrap_unchecked()
+                    }
+                };
+                f(haystack, pattern, mask.to_u64())
             })
     }
 }

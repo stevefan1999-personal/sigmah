@@ -1,7 +1,14 @@
 use core::simd::{cmp::SimdPartialEq, LaneCount, Mask, Simd, SupportedLaneCount};
 
 use crate::utils::{pad_zeroes_slice_unchecked, simd::SimdBits};
+
 use multiversion::multiversion;
+
+#[cfg(feature = "rayon")]
+use {
+    arrayvec::ArrayVec,
+    rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
+};
 
 /// Computes the result with the given the formula:
 /// ```
@@ -116,29 +123,57 @@ where
     let ignore_first = Mask::from_bitmask(if is_first_chunk {
         (i64::MAX - 1) as u64
     } else {
-        u64::MAX as u64
+        u64::MAX
     });
     (Simd::from_array(*window).simd_eq(first) & ignore_first).first_set()
 }
 
 #[inline(always)]
-pub fn equal_then_find_second_position_simd<T: SimdBits>(first: u8, window: &[u8]) -> Option<usize>
+pub fn equal_then_find_second_position_simd<T: SimdBits, const N: usize>(
+    first: u8,
+    window: &[u8; N],
+) -> Option<usize>
 where
     LaneCount<{ T::LANES }>: SupportedLaneCount,
+    [(); N.div_ceil(T::LANES)]:,
 {
     let first_splat = Simd::splat(first);
-    window
-        .chunks(T::LANES)
-        .enumerate()
-        .find_map(|(stride, window)| {
-            let window = unsafe {
-                if window.len() < T::LANES {
-                    &pad_zeroes_slice_unchecked(window)
-                } else {
-                    <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
-                }
-            };
-            equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
-                .map(|position| T::LANES * stride + position)
-        })
+
+    #[cfg(feature = "rayon")]
+    {
+        window
+            .chunks(T::LANES)
+            .collect::<ArrayVec<&[u8], { N.div_ceil(T::LANES) }>>()
+            .into_par_iter()
+            .enumerate()
+            .find_map_first(|(stride, &window)| {
+                let window = unsafe {
+                    if window.len() < T::LANES {
+                        &pad_zeroes_slice_unchecked(window)
+                    } else {
+                        <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
+                    }
+                };
+                equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
+                    .map(|position| T::LANES * stride + position)
+            })
+    }
+
+    #[cfg(not(feature = "rayon"))]
+    {
+        window
+            .chunks(T::LANES)
+            .enumerate()
+            .find_map(|(stride, window)| {
+                let window = unsafe {
+                    if window.len() < T::LANES {
+                        &pad_zeroes_slice_unchecked(window)
+                    } else {
+                        <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
+                    }
+                };
+                equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
+                    .map(|position| T::LANES * stride + position)
+            })
+    }
 }

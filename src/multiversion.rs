@@ -1,5 +1,11 @@
-use bitvec::slice::BitSlice;
+use bitvec::array::BitArray;
 use multiversion::multiversion;
+
+#[cfg(feature = "rayon")]
+use {
+    arrayvec::ArrayVec,
+    rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
+};
 
 /// Computes the result with the given the formula:
 /// ```
@@ -33,12 +39,28 @@ use multiversion::multiversion;
     "arm+vfp3",
     "arm+vfp2",
 ))]
-pub fn match_naive_directly(chunk: &[u8], pattern: &[u8], mask: &BitSlice<u8>) -> bool {
-    chunk
-        .iter()
-        .zip(pattern)
-        .zip(mask)
-        .all(|((chunk, pattern), mask)| !mask || chunk == pattern)
+pub fn match_naive<const N: usize>(
+    chunk: &[u8; N],
+    pattern: &[u8; N],
+    mask: &BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
+) -> bool {
+    {
+        #[cfg(feature = "rayon")]
+        {
+            chunk.into_par_iter().zip(pattern.into_par_iter()).zip(
+                mask.to_bitvec()
+                    .into_iter()
+                    .collect::<ArrayVec<bool, N>>()
+                    .into_par_iter(),
+            )
+        }
+
+        #[cfg(not(feature = "rayon"))]
+        {
+            chunk.into_iter().zip(pattern).zip(mask)
+        }
+    }
+    .all(|((chunk, pattern), mask)| !mask || chunk == pattern)
 }
 
 #[inline(always)]
@@ -59,14 +81,26 @@ pub fn match_naive_directly(chunk: &[u8], pattern: &[u8], mask: &BitSlice<u8>) -
     "arm+vfp3",
     "arm+vfp2",
 ))]
-pub fn equal_then_find_second_position_naive(first: u8, window: &[u8]) -> Option<usize> {
-    window
-        .iter()
-        .skip(1)
-        .position(|&x| x == first)
-        .map(|x| 1 + x)
-}
+pub fn equal_then_find_second_position_simple<const N: usize>(
+    first: u8,
+    window: &[u8; N],
+) -> Option<usize> {
+    {
+        #[cfg(feature = "rayon")]
+        {
+            window
+                .into_par_iter()
+                .skip(1)
+                .position_first(|&x| x == first)
+        }
 
+        #[cfg(not(feature = "rayon"))]
+        {
+            window.into_iter().skip(1).position(|&x| x == first)
+        }
+    }
+    .map(|x| 1 + x)
+}
 #[cfg(feature = "simd")]
 pub(crate) mod simd;
 

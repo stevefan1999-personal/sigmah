@@ -1,7 +1,12 @@
-use core::ops::{BitOr, Shl};
+use core::{
+    fmt::Debug,
+    ops::{BitOr, Shl},
+};
 
 // Unfortunately, where LaneCount<{ Self::LANES }>: SupportedLaneCount does not work, we do the best we can
-pub trait SimdBits: Shl<usize, Output = Self> + BitOr<Output = Self> + Sized {
+pub trait SimdBits:
+    Shl<usize, Output = Self> + BitOr<Output = Self> + Sized + Sync + Copy + Debug
+{
     const LANES: usize;
     const ONE: Self;
     const ZERO: Self;

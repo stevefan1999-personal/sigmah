@@ -16,5 +16,4 @@ pub fn are_all_elements_equal<T: PartialEq>(elems: &[T]) -> bool {
     tail.iter().all(|x| x == head)
 }
 
-#[cfg(feature = "simd")]
 pub(crate) mod simd;
