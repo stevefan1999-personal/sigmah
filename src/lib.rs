@@ -136,25 +136,27 @@ where
                     return Some(haystack);
                 }
 
-                haystack = &haystack[if self.mask[0] && !haystack_smaller_than_n {
-                    // Since we are using a sliding window approach, we are safe to determine that we can either:
-                    //   1. Skip to the first position of c for all c in window[1..] where c == window[0]
-                    //   2. Skip this entire window
-                    // The optimization is derived from the Z-Algorithm which constructs an array Z,
-                    // where Z[i] represents the length of the longest substring starting from i which is also a prefix of the string.
-                    // More formally, given first Z[0] is tombstone, then for i in 1..N:
-                    //   Z[i] is the length of the longest substring starting at i that matches the prefix of S (i.e. memcmp(S[0:], S[i:])).
-                    // Then we further simplify that to find the first position where Z[i] != 0, it to use the fact that if Z[i] > 0, it has to be a prefix of our pattern,
-                    // so it is a potential search point. If all that is in the Z box are 0, then we are safe to assume all patterns are unique and need one-by-one brute force.
-                    // Technically speaking, if we repeat this process to each shift of the window with respect to its mask position, we can obtain the Z-box algorithm as well
-                    //
-                    // If in SIMD manner, we can first splatting the first character to vector width and match it with the haystack window, then do find-first-set after discarding the first bit
+                // Since we are using a sliding window approach, we are safe to determine that we can either:
+                //   1. Skip to the first position of c for all c in window[1..] where c == window[0]
+                //   2. Skip this entire window
+                // The optimization is derived from the Z-Algorithm which constructs an array Z,
+                // where Z[i] represents the length of the longest substring starting from i which is also a prefix of the string.
+                // More formally, given first Z[0] is tombstone, then for i in 1..N:
+                //   Z[i] is the length of the longest substring starting at i that matches the prefix of S (i.e. memcmp(S[0:], S[i:])).
+                // Then we further simplify that to find the first position where Z[i] != 0, it to use the fact that if Z[i] > 0, it has to be a prefix of our pattern,
+                // so it is a potential search point. If all that is in the Z box are 0, then we are safe to assume all patterns are unique and need one-by-one brute force.
+                // Technically speaking, if we repeat this process to each shift of the window with respect to its mask position, we can obtain the Z-box algorithm as well
+                //
+                // If in SIMD manner, we can first take the first character, splat it to vector width and match it with the haystack window after first element, 
+                // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
+                let potential_position_after_first = if self.mask[0] && !haystack_smaller_than_n {
                     self.equal_then_find_first_position(self.pattern[0], &window[1..])
-                        .map(|x| 1 + x)
-                        .unwrap_or(N)
+                        .unwrap_or(N - 1)
                 } else {
-                    1
-                }..];
+                    0
+                };
+
+                haystack = &haystack[1 + potential_position_after_first..];
             }
             None
         }
