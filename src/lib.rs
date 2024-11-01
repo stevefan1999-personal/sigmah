@@ -107,6 +107,19 @@ where
         }
         arr
     }
+
+    #[inline(always)]
+    pub const fn to_boolean_mask(&self) -> [bool; N] {
+        let mut arr: [bool; N] = [false; N];
+        let mut i = 0;
+        while i < N {
+            const BITS: usize = u8::BITS as usize;
+            let bit = 1 << (i % BITS);
+            arr[i] = (self.0.data[i / BITS] & bit) == bit;
+            i += 1;
+        }
+        arr
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
