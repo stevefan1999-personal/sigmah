@@ -243,12 +243,10 @@ impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
-    #[inline(always)]
     pub fn scan<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, |chunk| self.match_best_effort(chunk))
     }
 
-    #[inline(always)]
     pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, |chunk| {
             match_naive_directly(chunk, &self.pattern, &self.mask.0)
