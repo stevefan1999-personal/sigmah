@@ -42,41 +42,41 @@ where
     });
 
     #[inline(always)]
-    pub const fn from_bstring_mask_array(pattern: [u8; N]) -> Self {
-        Self(Self::from_bstring_mask_array_to_bitarr(pattern))
+    pub const fn from_byte_array(pattern: [u8; N]) -> Self {
+        Self(Self::from_byte_array_to_bitarr(pattern))
     }
 
     #[inline(always)]
-    pub const fn from_bstring_mask_slice(pattern: &[u8; N]) -> Self {
-        Self(unsafe { Self::from_bstring_mask_slice_to_bitarr_unchecked(pattern) })
+    pub const fn from_byte_slice(pattern: &[u8; N]) -> Self {
+        Self(unsafe { Self::from_byte_slice_to_bitarr_unchecked(pattern) })
     }
 
     #[inline(always)]
-    pub const fn from_boolean_mask_array(pattern: [bool; N]) -> Self {
-        Self(Self::from_boolean_mask_array_to_bitarr(pattern))
+    pub const fn from_bool_array(pattern: [bool; N]) -> Self {
+        Self(Self::from_bool_array_to_bitarr(pattern))
     }
 
     #[inline(always)]
-    pub const fn from_boolean_mask_slice(pattern: &[bool; N]) -> Self {
-        Self(unsafe { Self::from_boolean_mask_slice_to_bitarr_unchecked(pattern) })
+    pub const fn from_bool_slice(pattern: &[bool; N]) -> Self {
+        Self(unsafe { Self::from_bool_slice_to_bitarr_unchecked(pattern) })
     }
 
     #[inline(always)]
-    pub const fn from_bstring_mask_array_to_bitarr(
+    pub const fn from_byte_array_to_bitarr(
         pattern: [u8; N],
     ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        unsafe { Self::from_bstring_mask_slice_to_bitarr_unchecked(&pattern) }
+        unsafe { Self::from_byte_slice_to_bitarr_unchecked(&pattern) }
     }
 
     #[inline(always)]
-    pub const fn from_boolean_mask_array_to_bitarr(
+    pub const fn from_bool_array_to_bitarr(
         pattern: [bool; N],
     ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        unsafe { Self::from_boolean_mask_slice_to_bitarr_unchecked(&pattern) }
+        unsafe { Self::from_bool_slice_to_bitarr_unchecked(&pattern) }
     }
 
     #[inline(always)]
-    pub const unsafe fn from_bstring_mask_slice_to_bitarr_unchecked(
+    pub const unsafe fn from_byte_slice_to_bitarr_unchecked(
         pattern: &[u8; N],
     ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
         let mut pattern_bool: [bool; N] = [false; N];
@@ -89,11 +89,11 @@ where
             };
             i += 1;
         }
-        Self::from_boolean_mask_slice_to_bitarr_unchecked(&pattern_bool)
+        Self::from_bool_slice_to_bitarr_unchecked(&pattern_bool)
     }
 
     #[inline(always)]
-    pub const unsafe fn from_boolean_mask_slice_to_bitarr_unchecked(
+    pub const unsafe fn from_bool_slice_to_bitarr_unchecked(
         pattern: &[bool; N],
     ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
         let mut arr: BitArray<[u8; N.div_ceil(u8::BITS as usize)]> = BitArray::ZERO;
@@ -109,7 +109,7 @@ where
     }
 
     #[inline(always)]
-    pub const fn to_boolean_mask(&self) -> [bool; N] {
+    pub const fn to_bool_array(&self) -> [bool; N] {
         let mut arr: [bool; N] = [false; N];
         let mut i = 0;
         while i < N {
@@ -122,7 +122,24 @@ where
     }
 
     #[inline(always)]
-    pub const fn to_bstring_mask(&self) -> [u8; N] {
+    pub const fn to_byte_array(&self) -> [u8; N] {
+        let mut arr: [u8; N] = [b'?'; N];
+        let mut i = 0;
+        while i < N {
+            const BITS: usize = u8::BITS as usize;
+            let bit = 1 << (i % BITS);
+            arr[i] = if (self.0.data[i / BITS] & bit) == bit {
+                b'x'
+            } else {
+                b'?'
+            };
+            i += 1;
+        }
+        arr
+    }
+
+    #[inline(always)]
+    pub const fn to_string(&self) -> [u8; N] {
         let mut arr: [u8; N] = [b'?'; N];
         let mut i = 0;
         while i < N {
@@ -172,7 +189,7 @@ where
     pub const fn from_pattern_mask(pattern: [u8; N], mask: [u8; N]) -> Self {
         Self {
             pattern,
-            mask: SignatureMask::from_bstring_mask_array(mask),
+            mask: SignatureMask::from_byte_array(mask),
         }
     }
 
@@ -217,7 +234,7 @@ where
         }
         Self {
             pattern: needle_,
-            mask: SignatureMask::from_boolean_mask_array(pattern),
+            mask: SignatureMask::from_bool_array(pattern),
         }
     }
 }
