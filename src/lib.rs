@@ -32,17 +32,22 @@ impl<const N: usize> SignatureMask<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
-    pub const MAX: Self = Self(BitArray {
-        data: [u8::MAX; N.div_ceil(u8::BITS as usize)],
-        ..BitArray::ZERO
-    });
-
-    pub const fn all(&self) -> bool {
+    pub const MAX: Self = Self({
+        let mut arr: BitArray<[u8; N.div_ceil(u8::BITS as usize)]> = BitArray::ZERO;
         let mut i = 0;
         while i < N {
             const BITS: usize = u8::BITS as usize;
-            let bit = 1 << (i % BITS);
-            if (self.0.data[i / BITS] & bit) != bit {
+            arr.data[i / BITS] |= 1 << (i % BITS);
+            i += 1;
+        }
+        arr
+    });
+
+    #[inline(always)]
+    pub fn is_exact(&self) -> bool {
+        let mut i = 0;
+        while i < N {
+            if !unsafe { *self.0.get_unchecked(i) } {
                 return false;
             }
             i += 1;
@@ -256,7 +261,7 @@ where
         mut haystack: &'a [u8],
         f: impl Fn(&[u8]) -> bool,
     ) -> Option<&'a [u8]> {
-        let exact_match = self.mask.all();
+        let exact_match = self.mask.is_exact();
 
         if haystack.len() < N {
             if exact_match {
