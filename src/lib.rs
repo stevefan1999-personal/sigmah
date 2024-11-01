@@ -41,59 +41,43 @@ where
         ..BitArray::ZERO
     });
 
-    #[inline(always)]
-    pub const fn from_byte_array(pattern: [u8; N]) -> Self {
-        Self(Self::from_byte_array_to_bitarr(pattern))
+    pub const fn all(&self) -> bool {
+        let mut i = 0;
+        while i < N {
+            const BITS: usize = u8::BITS as usize;
+            let bit = 1 << (i % BITS);
+            if (self.0.data[i / BITS] & bit) != bit {
+                return false;
+            }
+            i += 1;
+        }
+        true
     }
+}
 
-    #[inline(always)]
-    pub const fn from_byte_slice(pattern: &[u8; N]) -> Self {
-        Self(unsafe { Self::from_byte_slice_to_bitarr_unchecked(pattern) })
-    }
-
+impl<const N: usize> SignatureMask<N>
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
     #[inline(always)]
     pub const fn from_bool_array(pattern: [bool; N]) -> Self {
-        Self(Self::from_bool_array_to_bitarr(pattern))
+        Self::from_bool_slice(&pattern)
     }
 
     #[inline(always)]
     pub const fn from_bool_slice(pattern: &[bool; N]) -> Self {
-        Self(unsafe { Self::from_bool_slice_to_bitarr_unchecked(pattern) })
-    }
-
-    #[inline(always)]
-    pub const fn from_byte_array_to_bitarr(
-        pattern: [u8; N],
-    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        unsafe { Self::from_byte_slice_to_bitarr_unchecked(&pattern) }
+        Self(Self::from_bool_slice_to_bitarr(pattern))
     }
 
     #[inline(always)]
     pub const fn from_bool_array_to_bitarr(
         pattern: [bool; N],
     ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        unsafe { Self::from_bool_slice_to_bitarr_unchecked(&pattern) }
+        Self::from_bool_slice_to_bitarr(&pattern)
     }
 
     #[inline(always)]
-    pub const unsafe fn from_byte_slice_to_bitarr_unchecked(
-        pattern: &[u8; N],
-    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        let mut pattern_bool: [bool; N] = [false; N];
-        let mut i = 0;
-        while i < pattern.len() {
-            pattern_bool[i] = match pattern[i] {
-                b'x' => true,
-                b'?' => false,
-                _ => panic!("unknown character in pattern"),
-            };
-            i += 1;
-        }
-        Self::from_bool_slice_to_bitarr_unchecked(&pattern_bool)
-    }
-
-    #[inline(always)]
-    pub const unsafe fn from_bool_slice_to_bitarr_unchecked(
+    pub const fn from_bool_slice_to_bitarr(
         pattern: &[bool; N],
     ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
         let mut arr: BitArray<[u8; N.div_ceil(u8::BITS as usize)]> = BitArray::ZERO;
@@ -120,6 +104,48 @@ where
         }
         arr
     }
+}
+
+impl<const N: usize> SignatureMask<N>
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
+    #[inline(always)]
+    pub const fn from_byte_array(pattern: [u8; N]) -> Self {
+        Self::from_byte_slice(&pattern)
+    }
+
+    #[inline(always)]
+    pub const fn from_byte_slice(pattern: &[u8; N]) -> Self {
+        match Self::from_byte_slice_to_bitarr(pattern) {
+            Ok(x) => Self(x),
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[inline(always)]
+    pub const fn from_byte_array_to_bitarr(
+        pattern: [u8; N],
+    ) -> Result<BitArray<[u8; N.div_ceil(u8::BITS as usize)]>, &'static str> {
+        Self::from_byte_slice_to_bitarr(&pattern)
+    }
+
+    #[inline(always)]
+    pub const fn from_byte_slice_to_bitarr(
+        pattern: &[u8; N],
+    ) -> Result<BitArray<[u8; N.div_ceil(u8::BITS as usize)]>, &'static str> {
+        let mut pattern_bool: [bool; N] = [false; N];
+        let mut i = 0;
+        while i < pattern.len() {
+            pattern_bool[i] = match pattern[i] {
+                b'x' => true,
+                b'?' => false,
+                _ => return Err("unknown character in pattern"),
+            };
+            i += 1;
+        }
+        Ok(Self::from_bool_slice_to_bitarr(&pattern_bool))
+    }
 
     #[inline(always)]
     pub const fn to_byte_array(&self) -> [u8; N] {
@@ -136,19 +162,6 @@ where
             i += 1;
         }
         arr
-    }
-
-    pub const fn all(&self) -> bool {
-        let mut i = 0;
-        while i < N {
-            const BITS: usize = u8::BITS as usize;
-            let bit = 1 << (i % BITS);
-            if (self.0.data[i / BITS] & bit) != bit {
-                return false;
-            }
-            i += 1;
-        }
-        true
     }
 }
 
@@ -203,21 +216,19 @@ where
 
     #[inline(always)]
     pub const unsafe fn from_option_slice_unchecked(needle: &[Option<u8>]) -> Self {
-        let mut needle_: [u8; N] = [0; N];
-        let mut pattern: [bool; N] = [false; N];
+        let mut pattern: [u8; N] = [0; N];
+        let mut mask: [bool; N] = [false; N];
         let mut i = 0;
         while i < needle.len() {
             if let Some(x) = needle[i] {
-                needle_[i] = x;
-                pattern[i] = true;
-            } else {
-                pattern[i] = false;
+                pattern[i] = x;
+                mask[i] = true;
             }
             i += 1;
         }
         Self {
-            pattern: needle_,
-            mask: SignatureMask::from_bool_array(pattern),
+            pattern,
+            mask: SignatureMask::from_bool_array(mask),
         }
     }
 }
