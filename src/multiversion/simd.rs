@@ -105,114 +105,25 @@ where
     "arm+vfp3",
     "arm+vfp2",
 ))]
-pub fn equal_then_find_first_position_simd_core<const N: usize>(
-    first: Simd<u8, N>,
-    window: &[u8; N],
-) -> Option<usize>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
-    Simd::from_array(*window).simd_eq(first).first_set()
-}
-
-#[inline(always)]
-#[multiversion(targets(
-    "x86_64+avx512vl",
-    "x86_64+avx2",
-    "x86_64+avx",
-    "x86_64+sse2",
-    "x86_64+sse",
-    "x86+avx512bw",
-    "x86+avx2",
-    "x86+avx",
-    "x86+sse2",
-    "x86+sse",
-    "aarch64+sve2",
-    "aarch64+sve",
-    "aarch64+neon",
-    "arm+neon",
-    "arm+vfp4",
-    "arm+vfp3",
-    "arm+vfp2",
-))]
-pub fn equal_then_find_first_position_simd<T: SimdBits>(first: u8, window: &[u8]) -> Option<usize>
-where
-    LaneCount<{ T::LANES }>: SupportedLaneCount,
-{
-    let first_splat = Simd::splat(first);
-    window
-        .chunks(T::LANES)
-        .enumerate()
-        .filter_map(|(stride, window)| {
-            let window = unsafe {
-                if window.len() < T::LANES {
-                    &pad_zeroes_slice_unchecked(window)
-                } else {
-                    <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
-                }
-            };
-
-            equal_then_find_first_position_simd_core(first_splat, window)
-                .map(|position| T::LANES * stride + position)
-        })
-        .next()
-}
-
-#[inline(always)]
-#[multiversion(targets(
-    "x86_64+avx512vl",
-    "x86_64+avx2",
-    "x86_64+avx",
-    "x86_64+sse2",
-    "x86_64+sse",
-    "x86+avx512bw",
-    "x86+avx2",
-    "x86+avx",
-    "x86+sse2",
-    "x86+sse",
-    "aarch64+sve2",
-    "aarch64+sve",
-    "aarch64+neon",
-    "arm+neon",
-    "arm+vfp4",
-    "arm+vfp3",
-    "arm+vfp2",
-))]
 pub fn equal_then_find_second_position_simd_core<const N: usize>(
     first: Simd<u8, N>,
     window: &[u8; N],
+    is_first_chunk: bool,
 ) -> Option<usize>
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    (Simd::from_array(*window).simd_eq(first) & Mask::from_bitmask((i64::MAX - 1) as u64))
-        .first_set()
+    let check = Simd::from_array(*window).simd_eq(first);
+    if is_first_chunk {
+        check & Mask::from_bitmask((i64::MAX - 1) as u64)
+    } else {
+        check
+    }
+    .first_set()
 }
 
 #[inline(always)]
-#[multiversion(targets(
-    "x86_64+avx512vl",
-    "x86_64+avx2",
-    "x86_64+avx",
-    "x86_64+sse2",
-    "x86_64+sse",
-    "x86+avx512bw",
-    "x86+avx2",
-    "x86+avx",
-    "x86+sse2",
-    "x86+sse",
-    "aarch64+sve2",
-    "aarch64+sve",
-    "aarch64+neon",
-    "arm+neon",
-    "arm+vfp4",
-    "arm+vfp3",
-    "arm+vfp2",
-))]
-pub fn equal_then_find_second_position_simd_core_simd<T: SimdBits>(
-    first: u8,
-    window: &[u8],
-) -> Option<usize>
+pub fn equal_then_find_second_position_simd<T: SimdBits>(first: u8, window: &[u8]) -> Option<usize>
 where
     LaneCount<{ T::LANES }>: SupportedLaneCount,
 {
@@ -220,7 +131,7 @@ where
     window
         .chunks(T::LANES)
         .enumerate()
-        .filter_map(|(stride, window)| {
+        .find_map(|(stride, window)| {
             let window = unsafe {
                 if window.len() < T::LANES {
                     &pad_zeroes_slice_unchecked(window)
@@ -228,9 +139,7 @@ where
                     <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
                 }
             };
-
-            equal_then_find_second_position_simd_core(first_splat, window)
+            equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
                 .map(|position| T::LANES * stride + position)
         })
-        .next()
 }

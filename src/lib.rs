@@ -12,7 +12,7 @@ use bitvec::prelude::*;
 use {
     crate::{
         multiversion::simd::{
-            equal_then_find_second_position_simd_core_simd, match_simd_core, match_simd_select_core,
+            equal_then_find_second_position_simd, match_simd_core, match_simd_select_core,
         },
         utils::simd::SimdBits,
     },
@@ -191,7 +191,6 @@ where
     }
 
     // Notice we cannot use From<([u8; N], [u8; N])> because it will break const guarantee
-
     #[inline(always)]
     pub const fn from_pattern_mask_tuple((pattern, mask): ([u8; N], [u8; N])) -> Self {
         Self::from_pattern_mask(pattern, mask)
@@ -304,43 +303,34 @@ where
                     if unsafe { *self.mask.0.get_unchecked(0) } && !haystack_smaller_than_n {
                         let first = unsafe { *self.pattern.get_unchecked(0) };
 
-                    let potential_position_after_first = {
-                        #[cfg(feature = "simd")]
-                        {
+                        let potential_position_after_first = {
+                            #[cfg(feature = "simd")]
                             {
-                                if N >= 64 {
-                                    equal_then_find_second_position_simd_core_simd::<u64>(
-                                        first, window,
-                                    )
-                                } else if N >= 32 {
-                                    equal_then_find_second_position_simd_core_simd::<u32>(
-                                        first, window,
-                                    )
-                                } else if N >= 16 {
-                                    equal_then_find_second_position_simd_core_simd::<u16>(
-                                        first, window,
-                                    )
-                                } else if N >= 8 {
-                                    equal_then_find_second_position_simd_core_simd::<u8>(
-                                        first, window,
-                                    )
-                                } else {
-                                    // for the lulz
-                                    equal_then_find_second_position_naive(first, window)
+                                {
+                                    if N >= 64 {
+                                        equal_then_find_second_position_simd::<u64>(first, window)
+                                    } else if N >= 32 {
+                                        equal_then_find_second_position_simd::<u32>(first, window)
+                                    } else if N >= 16 {
+                                        equal_then_find_second_position_simd::<u16>(first, window)
+                                    } else if N >= 8 {
+                                        equal_then_find_second_position_simd::<u8>(first, window)
+                                    } else {
+                                        // for the lulz
+                                        equal_then_find_second_position_naive(first, window)
+                                    }
                                 }
                             }
-                        }
 
-                        #[cfg(not(feature = "simd"))]
-                        {
-                            equal_then_find_second_position_naive(first, &window)
-                        }
+                            #[cfg(not(feature = "simd"))]
+                            {
+                                equal_then_find_second_position_naive(first, &window)
+                            }
+                        };
+                        potential_position_after_first.unwrap_or(N)
+                    } else {
+                        1
                     };
-                    potential_position_after_first.unwrap_or(N)
-                } else {
-                    1
-                };
-
                 haystack = unsafe { haystack.get_unchecked(move_position..) };
             }
             None

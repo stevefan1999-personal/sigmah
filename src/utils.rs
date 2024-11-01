@@ -7,6 +7,7 @@ pub const unsafe fn pad_zeroes_slice_unchecked<const N: usize>(arr: &[u8]) -> [u
 }
 
 #[cfg(test)]
+#[inline(always)]
 pub fn are_all_elements_equal<T: PartialEq>(elems: &[T]) -> bool {
     let [head, tail @ ..] = elems else {
         return false;
