@@ -5,22 +5,18 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use crate::multiversion::{equal_then_find_first_position_naive, match_naive_directly};
+use crate::multiversion::{equal_then_find_second_position_naive, match_naive_directly};
 use bitvec::prelude::*;
 
 #[cfg(feature = "simd")]
 use {
     crate::{
         multiversion::simd::{
-            equal_then_find_first_position_simd, match_simd_core, match_simd_select_core,
+            equal_then_find_second_position_simd_core_simd, match_simd_core, match_simd_select_core,
         },
-        utils::simd::{iterate_haystack_pattern_mask_aligned_simd, Bits},
+        utils::simd::{iterate_haystack_pattern_mask_aligned_simd, SimdBits},
     },
-    core::{
-        ops::{BitOr, Shl},
-        simd::{LaneCount, SupportedLaneCount},
-    },
-    num_traits::{One, Zero},
+    core::simd::{LaneCount, SupportedLaneCount},
 };
 
 use crate::utils::pad_zeroes_slice_unchecked;
@@ -241,7 +237,6 @@ where
 impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
-    [(); N - 1]:,
 {
     #[inline(always)]
     pub fn scan<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
@@ -251,7 +246,7 @@ where
     #[inline(always)]
     pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
         self.scan_inner(haystack, |chunk| {
-            match_naive_directly(chunk, self.pattern, &self.mask.0)
+            match_naive_directly(chunk, &self.pattern, &self.mask.0)
         })
     }
 
@@ -259,7 +254,7 @@ where
     fn scan_inner<'a>(
         &self,
         mut haystack: &'a [u8],
-        f: impl Fn([u8; N]) -> bool,
+        f: impl Fn(&[u8]) -> bool,
     ) -> Option<&'a [u8]> {
         let exact_match = self.mask.all();
 
@@ -267,7 +262,7 @@ where
             if exact_match {
                 None
             } else {
-                f(unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }).then_some(haystack)
+                f(unsafe { &pad_zeroes_slice_unchecked::<N>(haystack) }).then_some(haystack)
             }
         } else {
             while !haystack.is_empty() {
@@ -277,7 +272,11 @@ where
                     return None;
                 }
 
-                let window = unsafe { pad_zeroes_slice_unchecked::<N>(haystack) };
+                let window = if haystack_smaller_than_n {
+                    &unsafe { pad_zeroes_slice_unchecked::<N>(haystack) }
+                } else {
+                    haystack
+                };
 
                 if f(window) {
                     return Some(haystack);
@@ -298,16 +297,47 @@ where
                 //
                 // If in SIMD manner, we can first take the first character, splat it to vector width and match it with the haystack window after first element,
                 // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
-                let potential_position_after_first = if self.mask.0[0] && !haystack_smaller_than_n {
-                    self.equal_then_find_first_position(self.pattern[0], unsafe {
-                        pad_zeroes_slice_unchecked::<{ N - 1 }>(&window[1..])
-                    })
-                    .unwrap_or(N - 1)
+                let move_position = if self.mask.0[0] && !haystack_smaller_than_n {
+                    let first = self.pattern[0];
+
+                    let potential_position_after_first = {
+                        #[cfg(feature = "simd")]
+                        {
+                            {
+                                if N >= 64 {
+                                    equal_then_find_second_position_simd_core_simd::<u64>(
+                                        first, window,
+                                    )
+                                } else if N >= 32 {
+                                    equal_then_find_second_position_simd_core_simd::<u32>(
+                                        first, window,
+                                    )
+                                } else if N >= 16 {
+                                    equal_then_find_second_position_simd_core_simd::<u16>(
+                                        first, window,
+                                    )
+                                } else if N >= 8 {
+                                    equal_then_find_second_position_simd_core_simd::<u8>(
+                                        first, window,
+                                    )
+                                } else {
+                                    // for the lulz
+                                    equal_then_find_second_position_naive(first, window)
+                                }
+                            }
+                        }
+
+                        #[cfg(not(feature = "simd"))]
+                        {
+                            equal_then_find_second_position_naive(first, &window)
+                        }
+                    };
+                    potential_position_after_first.unwrap_or(N)
                 } else {
-                    0
+                    1
                 };
 
-                haystack = &haystack[1 + potential_position_after_first..];
+                haystack = &haystack[move_position..];
             }
             None
         }
@@ -319,7 +349,7 @@ where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
     #[inline(always)]
-    pub fn match_best_effort(&self, chunk: [u8; N]) -> bool {
+    pub fn match_best_effort(&self, chunk: &[u8]) -> bool {
         #[cfg(feature = "simd")]
         {
             if N >= 64 {
@@ -343,32 +373,8 @@ where
     }
 
     #[inline(always)]
-    fn equal_then_find_first_position(&self, first: u8, window: [u8; N - 1]) -> Option<usize> {
-        #[cfg(feature = "simd")]
-        {
-            if N >= 64 {
-                equal_then_find_first_position_simd::<u64, { N - 1 }>(first, window)
-            } else if N >= 32 {
-                equal_then_find_first_position_simd::<u32, { N - 1 }>(first, window)
-            } else if N >= 16 {
-                equal_then_find_first_position_simd::<u16, { N - 1 }>(first, window)
-            } else if N >= 8 {
-                equal_then_find_first_position_simd::<u8, { N - 1 }>(first, window)
-            } else {
-                // for the lulz
-                equal_then_find_first_position_naive(first, window)
-            }
-        }
-
-        #[cfg(not(feature = "simd"))]
-        {
-            equal_then_find_first_position_naive(first, window)
-        }
-    }
-
-    #[inline(always)]
-    pub fn match_naive(&self, chunk: [u8; N]) -> bool {
-        match_naive_directly(chunk, self.pattern, &self.mask.0)
+    pub fn match_naive(&self, chunk: &[u8]) -> bool {
+        match_naive_directly(chunk, &self.pattern, &self.mask.0)
     }
 }
 
@@ -378,60 +384,49 @@ where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
     #[inline(always)]
-    pub fn scan_simd<'a, T>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
+    pub fn scan_simd<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
-        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
-        LaneCount<{ T::BITS }>: SupportedLaneCount,
-        u64: From<T>,
-        [(); N - 1]:,
+        LaneCount<{ T::LANES }>: SupportedLaneCount,
     {
         self.scan_inner(haystack, |chunk| self.match_simd(chunk))
     }
 
     #[inline(always)]
-    pub fn scan_simd_select<'a, T>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
+    pub fn scan_simd_select<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
-        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
-        LaneCount<{ T::BITS }>: SupportedLaneCount,
-        u64: From<T>,
-        [(); N - 1]:,
+        LaneCount<{ T::LANES }>: SupportedLaneCount,
     {
         self.scan_inner(haystack, |chunk| self.match_simd_select(chunk))
     }
 
     #[inline(always)]
-    pub fn match_simd<T>(&self, chunk: [u8; N]) -> bool
+    pub fn match_simd<T: SimdBits>(&self, chunk: &[u8]) -> bool
     where
-        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
-        LaneCount<{ T::BITS }>: SupportedLaneCount,
-        u64: From<T>,
+        LaneCount<{ T::LANES }>: SupportedLaneCount,
     {
-        self.match_simd_inner(chunk, match_simd_core)
+        self.match_simd_inner(chunk, |data, pattern, mask: T| {
+            match_simd_core(data, pattern, mask.to_u64())
+        })
     }
 
     #[inline(always)]
-    pub fn match_simd_select<T>(&self, chunk: [u8; N]) -> bool
+    pub fn match_simd_select<T: SimdBits>(&self, chunk: &[u8]) -> bool
     where
-        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
-        LaneCount<{ T::BITS }>: SupportedLaneCount,
-        u64: From<T>,
+        LaneCount<{ T::LANES }>: SupportedLaneCount,
     {
-        self.match_simd_inner(chunk, match_simd_select_core)
+        self.match_simd_inner(chunk, |data, pattern, mask: T| {
+            match_simd_select_core(data, pattern, mask.to_u64())
+        })
     }
 
     #[inline(always)]
-    pub fn match_simd_inner<T>(
+    pub fn match_simd_inner<T: SimdBits>(
         &self,
-        chunk: [u8; N],
-        f: impl Fn([u8; T::BITS], [u8; T::BITS], T) -> bool,
-    ) -> bool
-    where
-        T: Bits + One + Zero + Shl<usize, Output = T> + BitOr<Output = T>,
-        LaneCount<{ T::BITS }>: SupportedLaneCount,
-        u64: From<T>,
-    {
-        iterate_haystack_pattern_mask_aligned_simd(&chunk, &self.pattern, &self.mask.0)
-            .all(|(haystack, pattern, mask)| f(pattern, haystack, mask))
+        chunk: &[u8],
+        f: impl Fn([u8; T::LANES], [u8; T::LANES], T) -> bool,
+    ) -> bool {
+        iterate_haystack_pattern_mask_aligned_simd(chunk, &self.pattern, &self.mask.0)
+            .all(|(haystack, pattern, mask)| f(haystack, pattern, mask))
     }
 }
 
