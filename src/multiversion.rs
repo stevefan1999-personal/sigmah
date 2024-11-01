@@ -50,6 +50,7 @@ pub fn match_naive<const N: usize>(
             chunk.into_par_iter().zip(pattern.into_par_iter()).zip(
                 mask.to_bitvec()
                     .into_iter()
+                    .take(N)
                     .collect::<ArrayVec<bool, N>>()
                     .into_par_iter(),
             )
