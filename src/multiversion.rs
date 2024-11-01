@@ -34,7 +34,7 @@ use multiversion::multiversion;
     "arm+vfp2",
 ))]
 pub fn match_naive_directly<const N: usize>(
-    chunk: &[u8; N],
+    chunk: [u8; N],
     pattern: [u8; N],
     mask: &BitSlice<u8>,
 ) -> bool
@@ -45,7 +45,7 @@ where
         .into_iter()
         .zip(pattern)
         .zip(mask)
-        .all(|((chunk, pattern), mask)| !mask || *chunk == pattern)
+        .all(|((chunk, pattern), mask)| !mask || chunk == pattern)
 }
 
 #[inline(always)]
@@ -66,8 +66,11 @@ where
     "arm+vfp3",
     "arm+vfp2",
 ))]
-pub fn equal_then_find_first_position_naive(first: u8, window: &[u8]) -> Option<usize> {
-    window.into_iter().position(|&x| x == first)
+pub fn equal_then_find_first_position_naive<const N: usize>(
+    first: u8,
+    window: [u8; N],
+) -> Option<usize> {
+    window.into_iter().position(|x| x == first)
 }
 
 #[cfg(feature = "simd")]

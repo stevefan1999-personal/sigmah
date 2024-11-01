@@ -37,19 +37,16 @@ use multiversion::multiversion;
     "arm+vfp3",
     "arm+vfp2",
 ))]
-pub fn match_simd_select_core<M, const N: usize>(
-    pattern: [u8; N],
-    data: [u8; N],
-    mask: M,
-) -> Mask<i8, N>
+pub fn match_simd_select_core<M, const N: usize>(pattern: [u8; N], data: [u8; N], mask: M) -> bool
 where
     M: Into<u64>,
     LaneCount<N>: SupportedLaneCount,
 {
-    Mask::from_bitmask(mask.into()).select_mask(
+    (Mask::from_bitmask(mask.into()).select_mask(
         Simd::from_array(data).simd_eq(Simd::from_array(pattern)),
         Mask::from_bitmask(u64::MAX),
-    )
+    ))
+    .all()
 }
 
 #[inline(always)]
@@ -72,12 +69,13 @@ where
     "arm+vfp3",
     "arm+vfp2",
 ))]
-pub fn match_simd_core<M, const N: usize>(pattern: [u8; N], data: [u8; N], mask: M) -> Mask<i8, N>
+pub fn match_simd_core<M, const N: usize>(pattern: [u8; N], data: [u8; N], mask: M) -> bool
 where
     M: Into<u64>,
     LaneCount<N>: SupportedLaneCount,
 {
-    !Mask::from_bitmask(mask.into()) | Simd::from_array(data).simd_eq(Simd::from_array(pattern))
+    (!Mask::from_bitmask(mask.into()) | Simd::from_array(data).simd_eq(Simd::from_array(pattern)))
+        .all()
 }
 
 #[inline(always)]
@@ -114,7 +112,10 @@ where
 }
 
 #[inline(always)]
-pub fn equal_then_find_first_position_simd<T>(first: u8, window: &[u8]) -> Option<usize>
+pub fn equal_then_find_first_position_simd<T, const N: usize>(
+    first: u8,
+    window: [u8; N],
+) -> Option<usize>
 where
     T: Into<u64> + Bits,
     LaneCount<{ T::BITS }>: SupportedLaneCount,
