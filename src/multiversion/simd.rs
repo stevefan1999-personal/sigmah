@@ -38,8 +38,8 @@ use multiversion::multiversion;
     "arm+vfp2",
 ))]
 pub fn match_simd_select_core<const N: usize>(
-    data: [u8; N],
-    pattern: [u8; N],
+    data: &[u8; N],
+    pattern: &[u8; N],
     mask: impl Into<u64>,
 ) -> bool
 where
@@ -47,7 +47,7 @@ where
 {
     Mask::from_bitmask(mask.into())
         .select_mask(
-            Simd::from_array(data).simd_eq(Simd::from_array(pattern)),
+            Simd::from_slice(data).simd_eq(Simd::from_slice(pattern)),
             Mask::from_bitmask(u64::MAX),
         )
         .all()
@@ -74,14 +74,14 @@ where
     "arm+vfp2",
 ))]
 pub fn match_simd_core<const N: usize>(
-    data: [u8; N],
-    pattern: [u8; N],
+    data: &[u8; N],
+    pattern: &[u8; N],
     mask: impl Into<u64>,
 ) -> bool
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    (!Mask::from_bitmask(mask.into()) | Simd::from_array(data).simd_eq(Simd::from_array(pattern)))
+    (!Mask::from_bitmask(mask.into()) | Simd::from_slice(data).simd_eq(Simd::from_slice(pattern)))
         .all()
 }
 
@@ -107,12 +107,12 @@ where
 ))]
 pub fn equal_then_find_first_position_simd_core<const N: usize>(
     first: Simd<u8, N>,
-    window: [u8; N],
+    window: &[u8; N],
 ) -> Option<usize>
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    Simd::from_array(window).simd_eq(first).first_set()
+    Simd::from_slice(window).simd_eq(first).first_set()
 }
 
 #[inline(always)]
@@ -142,9 +142,16 @@ where
     let first_splat = Simd::splat(first);
     window
         .chunks(T::LANES)
-        .map(|x| unsafe { pad_zeroes_slice_unchecked(x) })
         .enumerate()
         .filter_map(|(stride, window)| {
+            let window = unsafe {
+                if window.len() < T::LANES {
+                    &pad_zeroes_slice_unchecked(window)
+                } else {
+                    <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
+                }
+            };
+
             equal_then_find_first_position_simd_core(first_splat, window)
                 .map(|position| T::LANES * stride + position)
         })
@@ -173,12 +180,12 @@ where
 ))]
 pub fn equal_then_find_second_position_simd_core<const N: usize>(
     first: Simd<u8, N>,
-    window: [u8; N],
+    window: &[u8; N],
 ) -> Option<usize>
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    (Simd::from_array(window).simd_eq(first) & Mask::from_bitmask((i64::MAX - 1) as u64))
+    (Simd::from_slice(window).simd_eq(first) & Mask::from_bitmask((i64::MAX - 1) as u64))
         .first_set()
 }
 
@@ -212,9 +219,16 @@ where
     let first_splat = Simd::splat(first);
     window
         .chunks(T::LANES)
-        .map(|x| unsafe { pad_zeroes_slice_unchecked(x) })
         .enumerate()
         .filter_map(|(stride, window)| {
+            let window = unsafe {
+                if window.len() < T::LANES {
+                    &pad_zeroes_slice_unchecked(window)
+                } else {
+                    <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
+                }
+            };
+
             equal_then_find_second_position_simd_core(first_splat, window)
                 .map(|position| T::LANES * stride + position)
         })

@@ -14,7 +14,7 @@ use {
         multiversion::simd::{
             equal_then_find_second_position_simd_core_simd, match_simd_core, match_simd_select_core,
         },
-        utils::simd::{iterate_haystack_pattern_mask_aligned_simd, SimdBits},
+        utils::simd::SimdBits,
     },
     core::simd::{LaneCount, SupportedLaneCount},
 };
@@ -404,8 +404,23 @@ where
     where
         LaneCount<{ T::LANES }>: SupportedLaneCount,
     {
-        self.match_simd_inner(chunk, |data, pattern, mask: T| {
-            match_simd_core(data, pattern, mask.to_u64())
+        self.match_simd_inner(chunk, |haystack, pattern, mask: T| {
+            let haystack = unsafe {
+                if haystack.len() < T::LANES {
+                    &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
+                } else {
+                    <&[u8; T::LANES]>::try_from(haystack).unwrap_unchecked()
+                }
+            };
+
+            let pattern = unsafe {
+                if pattern.len() < T::LANES {
+                    &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
+                } else {
+                    <&[u8; T::LANES]>::try_from(pattern).unwrap_unchecked()
+                }
+            };
+            match_simd_core(haystack, pattern, mask.to_u64())
         })
     }
 
@@ -414,8 +429,24 @@ where
     where
         LaneCount<{ T::LANES }>: SupportedLaneCount,
     {
-        self.match_simd_inner(chunk, |data, pattern, mask: T| {
-            match_simd_select_core(data, pattern, mask.to_u64())
+        self.match_simd_inner(chunk, |haystack, pattern, mask: T| {
+            let haystack = unsafe {
+                if haystack.len() < T::LANES {
+                    &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
+                } else {
+                    <&[u8; T::LANES]>::try_from(haystack).unwrap_unchecked()
+                }
+            };
+
+            let pattern = unsafe {
+                if pattern.len() < T::LANES {
+                    &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
+                } else {
+                    <&[u8; T::LANES]>::try_from(pattern).unwrap_unchecked()
+                }
+            };
+
+            match_simd_select_core(haystack, pattern, mask.to_u64())
         })
     }
 
@@ -423,10 +454,19 @@ where
     pub fn match_simd_inner<T: SimdBits>(
         &self,
         chunk: &[u8],
-        f: impl Fn([u8; T::LANES], [u8; T::LANES], T) -> bool,
+        f: impl Fn(&[u8], &[u8], T) -> bool,
     ) -> bool {
-        iterate_haystack_pattern_mask_aligned_simd(chunk, &self.pattern, &self.mask.0)
-            .all(|(haystack, pattern, mask)| f(haystack, pattern, mask))
+        chunk
+            .chunks(T::LANES)
+            .zip(self.pattern.chunks(T::LANES))
+            .zip(self.mask.0.chunks(T::LANES))
+            .all(|((haystack, pattern), mask)| {
+                f(
+                    haystack,
+                    pattern,
+                    mask.iter_ones().fold(T::ZERO, |acc, x| acc | (T::ONE << x)),
+                )
+            })
     }
 }
 

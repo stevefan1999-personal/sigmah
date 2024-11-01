@@ -1,5 +1,3 @@
-use crate::pad_zeroes_slice_unchecked;
-use bitvec::prelude::*;
 use core::ops::{BitOr, Shl};
 
 // Unfortunately, where LaneCount<{ Self::LANES }>: SupportedLaneCount does not work, we do the best we can
@@ -55,32 +53,4 @@ impl SimdBits for usize {
     fn to_u64(self) -> u64 {
         self as _
     }
-}
-
-#[inline(always)]
-pub fn iterate_haystack_pattern_mask_aligned_simd<'a, T: SimdBits>(
-    chunk: &'a [u8],
-    pattern: &'a [u8],
-    mask: &'a BitSlice<u8>,
-) -> impl Iterator<Item = ([u8; T::LANES], [u8; T::LANES], T)> + 'a {
-    let lanes = T::LANES;
-
-    let haystack_chunks_aligned = chunk
-        .chunks(lanes)
-        .map(|x| unsafe { pad_zeroes_slice_unchecked(x) });
-
-    let pattern_chunks_aligned = pattern
-        .chunks(lanes)
-        .map(|x| unsafe { pad_zeroes_slice_unchecked(x) });
-
-    haystack_chunks_aligned
-        .zip(pattern_chunks_aligned)
-        .zip(mask.chunks(lanes))
-        .map(|((haystack, pattern), mask)| {
-            (
-                haystack,
-                pattern,
-                mask.iter_ones().fold(T::ZERO, |acc, x| acc | (T::ONE << x)),
-            )
-        })
 }
