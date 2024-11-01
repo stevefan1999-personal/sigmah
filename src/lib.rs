@@ -120,6 +120,23 @@ where
         }
         arr
     }
+
+    #[inline(always)]
+    pub const fn to_bstring_mask(&self) -> [u8; N] {
+        let mut arr: [u8; N] = [b'?'; N];
+        let mut i = 0;
+        while i < N {
+            const BITS: usize = u8::BITS as usize;
+            let bit = 1 << (i % BITS);
+            arr[i] = if (self.0.data[i / BITS] & bit) == bit {
+                b'x'
+            } else {
+                b'?'
+            };
+            i += 1;
+        }
+        arr
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
