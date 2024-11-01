@@ -117,21 +117,21 @@ where
 
     #[inline(always)]
     pub const fn from_byte_slice(pattern: &[u8; N]) -> Self {
-        match Self::from_byte_slice_to_bitarr(pattern) {
+        match Self::try_from_byte_slice_to_bitarr(pattern) {
             Ok(x) => Self(x),
             Err(e) => panic!("{}", e),
         }
     }
 
     #[inline(always)]
-    pub const fn from_byte_array_to_bitarr(
+    pub const fn try_from_byte_array_to_bitarr(
         pattern: [u8; N],
     ) -> Result<BitArray<[u8; N.div_ceil(u8::BITS as usize)]>, &'static str> {
-        Self::from_byte_slice_to_bitarr(&pattern)
+        Self::try_from_byte_slice_to_bitarr(&pattern)
     }
 
     #[inline(always)]
-    pub const fn from_byte_slice_to_bitarr(
+    pub const fn try_from_byte_slice_to_bitarr(
         pattern: &[u8; N],
     ) -> Result<BitArray<[u8; N.div_ceil(u8::BITS as usize)]>, &'static str> {
         let mut pattern_bool: [bool; N] = [false; N];
