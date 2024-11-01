@@ -113,13 +113,12 @@ pub fn equal_then_find_second_position_simd_core<const N: usize>(
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    let check = Simd::from_array(*window).simd_eq(first);
-    if is_first_chunk {
-        check & Mask::from_bitmask((i64::MAX - 1) as u64)
+    let ignore_first = Mask::from_bitmask(if is_first_chunk {
+        (i64::MAX - 1) as u64
     } else {
-        check
-    }
-    .first_set()
+        u64::MAX as u64
+    });
+    (Simd::from_array(*window).simd_eq(first) & ignore_first).first_set()
 }
 
 #[inline(always)]
