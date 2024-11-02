@@ -1,7 +1,4 @@
-use core::{
-    mem::transmute_copy,
-    simd::{cmp::SimdPartialEq, LaneCount, Mask, Simd, SupportedLaneCount},
-};
+use core::simd::{cmp::SimdPartialEq, LaneCount, Mask, Simd, SupportedLaneCount};
 
 use crate::utils::{pad_zeroes_slice_unchecked, simd::SimdBits};
 
@@ -142,43 +139,33 @@ where
 {
     let first_splat = Simd::splat(first);
 
+    let f = |stride: usize, window: &[u8]| {
+        let window = unsafe {
+            if window.len() < T::LANES {
+                &pad_zeroes_slice_unchecked(window)
+            } else {
+                core::mem::transmute_copy(&window)
+            }
+        };
+        equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
+            .map(|position| T::LANES * stride + position)
+    };
+
+    let window_chunks = window.chunks(T::LANES);
+
     #[cfg(feature = "rayon")]
     {
-        window
-            .chunks(T::LANES)
+        window_chunks
             .collect::<ArrayVec<&[u8], { N.div_ceil(T::LANES) }>>()
             .into_par_iter()
             .enumerate()
-            .find_map_first(|(stride, &window)| {
-                let window: &[u8; T::LANES] = unsafe {
-                    if window.len() < T::LANES {
-                        &pad_zeroes_slice_unchecked(window)
-                    } else {
-                        transmute_copy(&window)
-                    }
-                };
-
-                equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
-                    .map(|position| T::LANES * stride + position)
-            })
+            .find_map_first(|(stride, window)| f(stride, window))
     }
 
     #[cfg(not(feature = "rayon"))]
     {
-        window
-            .chunks(T::LANES)
+        window_chunks
             .enumerate()
-            .find_map(|(stride, window)| {
-                let window: &[u8; T::LANES] = unsafe {
-                    if window.len() < T::LANES {
-                        &pad_zeroes_slice_unchecked(window)
-                    } else {
-                        transmute_copy(&window)
-                    }
-                };
-
-                equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
-                    .map(|position| T::LANES * stride + position)
-            })
+            .find_map(|(stride, window)| f(stride, window))
     }
 }
