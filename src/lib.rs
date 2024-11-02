@@ -466,7 +466,7 @@ where
                     if haystack.len() < T::LANES {
                         &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
                     } else {
-                        transmute_copy(&pattern)
+                        transmute_copy(&haystack)
                     }
                 };
 
