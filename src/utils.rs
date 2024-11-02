@@ -16,4 +16,18 @@ pub fn are_all_elements_equal<T: PartialEq>(elems: &[T]) -> bool {
     tail.iter().all(|x| x == head)
 }
 
+#[inline(always)]
+pub const unsafe fn const_set_unchecked<T: Copy, const N: usize>(
+    arr: &mut [T; N],
+    idx: usize,
+    elem: T,
+) {
+    *arr.as_mut_ptr().add(idx) = elem;
+}
+
+#[inline(always)]
+pub const unsafe fn const_get_unchecked<T: Copy, const N: usize>(arr: &[T; N], idx: usize) -> T {
+    *arr.as_ptr().add(idx)
+}
+
 pub(crate) mod simd;

@@ -1,5 +1,6 @@
 use bitvec::array::BitArray;
-use multiversion::multiversion;
+
+use crate::utils::const_get_unchecked;
 
 #[cfg(feature = "rayon")]
 use {
@@ -22,86 +23,74 @@ use {
 /// all(matches(x, true) for x in result)
 /// ```
 #[inline(always)]
-#[multiversion(targets(
-    "x86_64+avx2",
-    "x86_64+avx",
-    "x86_64+sse2",
-    "x86_64+sse",
-    "x86+avx2",
-    "x86+avx",
-    "x86+sse2",
-    "x86+sse",
-    "aarch64+sve2",
-    "aarch64+sve",
-    "aarch64+neon",
-    "arm+neon",
-    "arm+vfp4",
-    "arm+vfp3",
-    "arm+vfp2",
-))]
-pub fn match_naive<const N: usize>(
+#[cfg(feature = "rayon")]
+pub fn match_naive_rayon<const N: usize>(
     chunk: &[u8; N],
     pattern: &[u8; N],
     mask: &BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
 ) -> bool {
-    {
-        #[cfg(feature = "rayon")]
-        {
-            chunk.into_par_iter().zip(pattern.into_par_iter()).zip(
-                mask.to_bitvec()
-                    .into_iter()
-                    .take(N)
-                    .collect::<ArrayVec<bool, N>>()
-                    .into_par_iter(),
-            )
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            chunk.iter().zip(pattern).zip(mask)
-        }
-    }
-    .all(|((chunk, pattern), mask)| !mask || chunk == pattern)
+    chunk
+        .into_par_iter()
+        .zip(pattern.into_par_iter())
+        .zip(
+            mask.to_bitvec()
+                .into_iter()
+                .take(N)
+                .collect::<ArrayVec<bool, N>>()
+                .into_par_iter(),
+        )
+        .all(|((chunk, pattern), mask)| !mask || chunk == pattern)
 }
 
 #[inline(always)]
-#[multiversion(targets(
-    "x86_64+avx2",
-    "x86_64+avx",
-    "x86_64+sse2",
-    "x86_64+sse",
-    "x86+avx2",
-    "x86+avx",
-    "x86+sse2",
-    "x86+sse",
-    "aarch64+sve2",
-    "aarch64+sve",
-    "aarch64+neon",
-    "arm+neon",
-    "arm+vfp4",
-    "arm+vfp3",
-    "arm+vfp2",
-))]
-pub fn equal_then_find_second_position_simple<const N: usize>(
+pub const fn match_naive_const<const N: usize>(
+    chunk: &[u8; N],
+    pattern: &[u8; N],
+    mask: &BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
+) -> bool {
+    let mut i = 0;
+    while i < N {
+        const BITS: usize = u8::BITS as usize;
+        let (idx, bit_pos) = (i / BITS, i % BITS);
+        if !unsafe {
+            let mask = (const_get_unchecked(&mask.data, idx) & (1 << bit_pos)) != 0;
+            !mask || (const_get_unchecked(chunk, i) == const_get_unchecked(pattern, i))
+        } {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+#[inline(always)]
+#[cfg(feature = "rayon")]
+pub fn equal_then_find_second_position_naive_rayon<const N: usize>(
     first: u8,
     window: &[u8; N],
 ) -> Option<usize> {
-    {
-        #[cfg(feature = "rayon")]
-        {
-            window
-                .into_par_iter()
-                .skip(1)
-                .position_first(|&x| x == first)
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            window.iter().skip(1).position(|&x| x == first)
-        }
-    }
-    .map(|x| 1 + x)
+    window
+        .into_par_iter()
+        .skip(1)
+        .position_first(|&x| x == first)
+        .map(|x| 1 + x)
 }
+
+#[inline(always)]
+pub const fn equal_then_find_second_position_naive_const<const N: usize>(
+    first: u8,
+    window: &[u8; N],
+) -> Option<usize> {
+    let mut i = 1;
+    while i < N {
+        if unsafe { const_get_unchecked(window, i) } == first {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
 #[cfg(feature = "simd")]
 pub(crate) mod simd;
 
