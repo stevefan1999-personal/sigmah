@@ -782,3 +782,4 @@ where
 
 pub(crate) mod multiversion;
 pub mod utils;
+pub mod concise_bitvec;
