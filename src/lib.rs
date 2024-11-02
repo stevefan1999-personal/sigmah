@@ -512,54 +512,6 @@ where
         }
         None
     }
-
-    #[inline(always)]
-    fn equal_then_find_second_position(&self, first: u8, window: &[u8; N]) -> Option<usize> {
-        #[cfg(feature = "simd")]
-        {
-            self.equal_then_find_second_position_with_simd(first, window)
-        }
-
-        #[cfg(not(feature = "simd"))]
-        {
-            self.equal_then_find_second_position_naive(first, window)
-        }
-    }
-
-    #[cfg(feature = "simd")]
-    #[inline(always)]
-    fn equal_then_find_second_position_with_simd(
-        &self,
-        first: u8,
-        window: &[u8; N],
-    ) -> Option<usize> {
-        if N >= 64 {
-            equal_then_find_second_position_simd::<u64, N>(first, window)
-        } else if N >= 32 {
-            equal_then_find_second_position_simd::<u32, N>(first, window)
-        } else if N >= 16 {
-            equal_then_find_second_position_simd::<u16, N>(first, window)
-        } else if N >= 8 {
-            equal_then_find_second_position_simd::<u8, N>(first, window)
-        } else {
-            // for the lulz
-            self.equal_then_find_second_position_naive(first, window)
-        }
-    }
-
-    #[inline(always)]
-    fn equal_then_find_second_position_naive(&self, first: u8, window: &[u8; N]) -> Option<usize> {
-        // for the lulz
-        #[cfg(feature = "rayon")]
-        {
-            equal_then_find_second_position_naive_rayon(first, window)
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            equal_then_find_second_position_naive_const(first, window)
-        }
-    }
 }
 
 impl<const N: usize> Signature<N>
@@ -714,6 +666,10 @@ where
 impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
+    [(); N.div_ceil(u64::LANES)]:,
+    [(); N.div_ceil(u32::LANES)]:,
+    [(); N.div_ceil(u16::LANES)]:,
+    [(); N.div_ceil(u8::LANES)]:,
 {
     #[inline(always)]
     pub fn match_simd_rayon<T: SimdBits>(&self, chunk: &[u8; N]) -> bool
@@ -765,6 +721,62 @@ where
                 };
                 f(haystack, pattern, mask.to_u64())
             })
+    }
+}
+
+impl<const N: usize> Signature<N>
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+    [(); N.div_ceil(u64::LANES)]:,
+    [(); N.div_ceil(u32::LANES)]:,
+    [(); N.div_ceil(u16::LANES)]:,
+    [(); N.div_ceil(u8::LANES)]:,
+{
+    #[inline(always)]
+    fn equal_then_find_second_position(&self, first: u8, window: &[u8; N]) -> Option<usize> {
+        #[cfg(feature = "simd")]
+        {
+            self.equal_then_find_second_position_with_simd(first, window)
+        }
+
+        #[cfg(not(feature = "simd"))]
+        {
+            self.equal_then_find_second_position_naive(first, window)
+        }
+    }
+
+    #[inline(always)]
+    fn equal_then_find_second_position_naive(&self, first: u8, window: &[u8; N]) -> Option<usize> {
+        // for the lulz
+        #[cfg(feature = "rayon")]
+        {
+            equal_then_find_second_position_naive_rayon(first, window)
+        }
+
+        #[cfg(not(feature = "rayon"))]
+        {
+            equal_then_find_second_position_naive_const(first, window)
+        }
+    }
+
+    #[inline(always)]
+    fn equal_then_find_second_position_with_simd(
+        &self,
+        first: u8,
+        window: &[u8; N],
+    ) -> Option<usize> {
+        if N >= 64 {
+            equal_then_find_second_position_simd::<u64, N>(first, window)
+        } else if N >= 32 {
+            equal_then_find_second_position_simd::<u32, N>(first, window)
+        } else if N >= 16 {
+            equal_then_find_second_position_simd::<u16, N>(first, window)
+        } else if N >= 8 {
+            equal_then_find_second_position_simd::<u8, N>(first, window)
+        } else {
+            // for the lulz
+            self.equal_then_find_second_position_naive(first, window)
+        }
     }
 }
 
