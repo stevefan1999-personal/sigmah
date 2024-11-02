@@ -315,16 +315,16 @@ where
     }
 
     #[inline(always)]
-    pub const fn from_pattern_mask(pattern: [u8; N], mask: [u8; N]) -> Self {
+    pub const fn from_pattern_mask(pattern: &[u8; N], mask: &[u8; N]) -> Self {
         Self {
-            pattern,
-            mask: SignatureMask::from_byte_array_or_panic(mask),
+            pattern: *pattern,
+            mask: SignatureMask::from_byte_slice_or_panic(mask),
         }
     }
 
     // Notice we cannot use From<([u8; N], [u8; N])> because it will break const guarantee
     #[inline(always)]
-    pub const fn from_pattern_mask_tuple((pattern, mask): ([u8; N], [u8; N])) -> Self {
+    pub const fn from_pattern_mask_tuple((pattern, mask): (&[u8; N], &[u8; N])) -> Self {
         Self::from_pattern_mask(pattern, mask)
     }
 
