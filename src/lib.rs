@@ -176,13 +176,13 @@ where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
     #[inline(always)]
-    pub const fn from_byte_array_or_panic(pattern: [u8; N]) -> Self {
-        Self::from_byte_slice_or_panic(&pattern)
+    pub const fn from_byte_array_or_panic(mask: [u8; N]) -> Self {
+        Self::from_byte_slice_or_panic(&mask)
     }
 
     #[inline(always)]
-    pub const fn from_byte_slice_or_panic(pattern: &[u8; N]) -> Self {
-        match Self::try_from_byte_slice_to_bitarr(pattern) {
+    pub const fn from_byte_slice_or_panic(mask: &[u8; N]) -> Self {
+        match Self::try_from_byte_slice_to_bitarr(mask) {
             Ok(x) => Self(x),
             Err(e) => panic!("{}", e),
         }
@@ -190,26 +190,26 @@ where
 
     #[inline(always)]
     pub const fn try_from_byte_array_to_bitarr(
-        pattern: [u8; N],
+        mask: [u8; N],
     ) -> Result<BitArray<[u8; N.div_ceil(u8::BITS as usize)]>, &'static str> {
-        Self::try_from_byte_slice_to_bitarr(&pattern)
+        Self::try_from_byte_slice_to_bitarr(&mask)
     }
 
     #[inline(always)]
     pub const fn try_from_byte_slice_to_bitarr(
-        pattern: &[u8; N],
+        mask: &[u8; N],
     ) -> Result<BitArray<[u8; N.div_ceil(u8::BITS as usize)]>, &'static str> {
         let mut pattern_bool: [bool; N] = [false; N];
         let mut i = 0;
-        while i < pattern.len() {
+        while i < N {
             unsafe {
                 const_set_unchecked(
                     &mut pattern_bool,
                     i,
-                    match const_get_unchecked(pattern, i) {
+                    match const_get_unchecked(mask, i) {
                         b'x' => true,
                         b'?' => false,
-                        _ => return Err("unknown character in pattern"),
+                        _ => return Err("unknown character in mask"),
                     },
                 )
             };
