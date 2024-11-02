@@ -58,7 +58,7 @@ pub fn match_naive<const N: usize>(
 
         #[cfg(not(feature = "rayon"))]
         {
-            chunk.into_iter().zip(pattern).zip(mask)
+            chunk.iter().zip(pattern).zip(mask)
         }
     }
     .all(|((chunk, pattern), mask)| !mask || chunk == pattern)
@@ -97,7 +97,7 @@ pub fn equal_then_find_second_position_simple<const N: usize>(
 
         #[cfg(not(feature = "rayon"))]
         {
-            window.into_iter().skip(1).position(|&x| x == first)
+            window.iter().skip(1).position(|&x| x == first)
         }
     }
     .map(|x| 1 + x)
