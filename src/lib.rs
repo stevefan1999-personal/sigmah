@@ -284,7 +284,7 @@ where
         while i < N {
             // const violation: unnecessary bound check
             let (new_lps, new_len, advance) = {
-                if !unsafe { const_get_unchecked(&mask, i) }
+                if !unsafe { const_get_unchecked(&mask, len) }
                     || unsafe { self.get_unchecked(i) == self.get_unchecked(len) }
                 {
                     let forward = Some(len + 1);
