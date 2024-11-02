@@ -11,6 +11,7 @@ pub trait SimdBits:
     const ONE: Self;
     const ZERO: Self;
 
+    #[allow(dead_code)]
     fn to_u64(self) -> u64;
 }
 
