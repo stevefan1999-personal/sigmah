@@ -189,6 +189,32 @@ impl<const N: usize> Signature<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
+    pub const fn longest_prefix_suffix_array(&self) -> [usize; N] {
+        let mask = self.mask.to_bool_array();
+        let mut lps: [usize; N] = [0; N];
+
+        let mut len = 0;
+        let mut i = 1;
+        'compute: while i < N {
+            // const violation: unnecessary bound check
+            lps[i] = loop {
+                if !mask[i] || self.pattern[i] == self.pattern[len] {
+                    len += 1;
+                    break len;
+                } else if len != 0 {
+                    len = lps[len - 1];
+                    continue 'compute;
+                } else {
+                    break 0;
+                }
+            };
+
+            i += 1;
+        }
+
+        lps
+    }
+
     #[inline(always)]
     pub const fn from_pattern_mask(pattern: [u8; N], mask: [u8; N]) -> Self {
         Self {
