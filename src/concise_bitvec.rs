@@ -1,10 +1,11 @@
 use crate::utils::{const_get_unchecked, const_set_unchecked};
 use bitvec::prelude::*;
+use derive_more::{From, Into};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, From, Into)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(transparent)]
-pub struct ConciseBitArray<const N: usize>(BitArray<[u8; N.div_ceil(u8::BITS as usize)]>)
+pub struct ConciseBitArray<const N: usize>(pub BitArray<[u8; N.div_ceil(u8::BITS as usize)]>)
 where
     [(); N.div_ceil(u8::BITS as usize)]:;
 
@@ -25,6 +26,8 @@ where
         }
         arr
     });
+
+    pub const ZERO: Self = Self(BitArray::ZERO);
 
     #[inline(always)]
     pub const fn get_storage_idx_and_bit_pos(i: usize) -> Option<(usize, usize)> {
@@ -85,28 +88,14 @@ where
 
     #[inline(always)]
     pub const fn from_bool_slice(pattern: &[bool; N]) -> Self {
-        Self(Self::from_bool_slice_to_bitarr(pattern))
-    }
-
-    #[inline(always)]
-    pub const fn from_bool_array_to_bitarr(
-        pattern: [bool; N],
-    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        Self::from_bool_slice_to_bitarr(&pattern)
-    }
-
-    #[inline(always)]
-    pub const fn from_bool_slice_to_bitarr(
-        pattern: &[bool; N],
-    ) -> BitArray<[u8; N.div_ceil(u8::BITS as usize)]> {
-        let mut arr: BitArray<[u8; N.div_ceil(u8::BITS as usize)]> = BitArray::ZERO;
+        let mut arr = Self::ZERO;
         let mut i = 0;
         while i < pattern.len() {
             let (idx, bit_pos) = unsafe { Self::get_storage_idx_and_bit_pos_unchecked(i) };
             unsafe {
-                let bit_storage = const_get_unchecked(&arr.data, idx);
+                let bit_storage = const_get_unchecked(&arr.0.data, idx);
                 const_set_unchecked(
-                    &mut arr.data,
+                    &mut arr.0.data,
                     idx,
                     bit_storage
                         | if const_get_unchecked(pattern, i) {

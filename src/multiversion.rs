@@ -1,6 +1,4 @@
-use bitvec::array::BitArray;
-
-use crate::utils::const_get_unchecked;
+use crate::{concise_bitvec::ConciseBitArray, utils::const_get_unchecked};
 
 #[cfg(feature = "rayon")]
 use {
@@ -27,13 +25,17 @@ use {
 pub fn match_naive_rayon<const N: usize>(
     chunk: &[u8; N],
     pattern: &[u8; N],
-    mask: &BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
-) -> bool {
+    mask: &ConciseBitArray<N>,
+) -> bool
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
     chunk
         .into_par_iter()
         .zip(pattern.into_par_iter())
         .zip(
-            mask.to_bitvec()
+            mask.0
+                .to_bitvec()
                 .into_iter()
                 .take(N)
                 .collect::<ArrayVec<bool, N>>()
@@ -46,14 +48,17 @@ pub fn match_naive_rayon<const N: usize>(
 pub const fn match_naive_const<const N: usize>(
     chunk: &[u8; N],
     pattern: &[u8; N],
-    mask: &BitArray<[u8; N.div_ceil(u8::BITS as usize)]>,
-) -> bool {
+    mask: &ConciseBitArray<N>,
+) -> bool
+where
+    [(); N.div_ceil(u8::BITS as usize)]:,
+{
     let mut i = 0;
     while i < N {
         const BITS: usize = u8::BITS as usize;
         let (idx, bit_pos) = (i / BITS, i % BITS);
         if !unsafe {
-            let mask = (const_get_unchecked(&mask.data, idx) & (1 << bit_pos)) != 0;
+            let mask = (const_get_unchecked(&mask.0.data, idx) & (1 << bit_pos)) != 0;
             !mask || (const_get_unchecked(chunk, i) == const_get_unchecked(pattern, i))
         } {
             return false;
