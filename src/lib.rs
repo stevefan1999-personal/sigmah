@@ -6,8 +6,8 @@
 #![feature(generic_const_exprs)]
 
 use crate::multiversion::{equal_then_find_second_position_simple, match_naive};
-
 use bitvec::prelude::*;
+use core::mem::transmute_copy;
 
 #[cfg(all(feature = "rayon", feature = "simd"))]
 use {
@@ -277,7 +277,7 @@ where
                 if haystack_smaller_than_n {
                     &pad_zeroes_slice_unchecked::<N>(haystack)
                 } else {
-                    core::mem::transmute_copy(&haystack)
+                    transmute_copy(&haystack)
                 }
             };
 
@@ -337,7 +337,7 @@ where
 
         #[cfg(not(feature = "simd"))]
         {
-            equal_then_find_second_position_simple(first, &window)
+            equal_then_find_second_position_simple(first, window)
         }
     }
 }
@@ -462,19 +462,19 @@ where
                     .map(|mask| mask.iter_ones().fold(T::ZERO, |acc, x| acc | (T::ONE << x))),
             )
             .all(|((haystack, pattern), ref mask)| {
-                let haystack = unsafe {
+                let haystack: &[u8; T::LANES] = unsafe {
                     if haystack.len() < T::LANES {
                         &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
                     } else {
-                        <&[u8; T::LANES]>::try_from(haystack).unwrap_unchecked()
+                        transmute_copy(&pattern)
                     }
                 };
 
-                let pattern = unsafe {
+                let pattern: &[u8; T::LANES] = unsafe {
                     if pattern.len() < T::LANES {
                         &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
                     } else {
-                        <&[u8; T::LANES]>::try_from(pattern).unwrap_unchecked()
+                        transmute_copy(&pattern)
                     }
                 };
                 f(haystack, pattern, mask.to_u64())
@@ -520,19 +520,19 @@ where
             .zip(patterns.into_par_iter())
             .zip(masks.into_par_iter())
             .all(|((&haystack, &pattern), mask)| {
-                let haystack = unsafe {
+                let haystack: &[u8; T::LANES] = unsafe {
                     if haystack.len() < T::LANES {
                         &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
                     } else {
-                        <&[u8; T::LANES]>::try_from(haystack).unwrap_unchecked()
+                        transmute_copy(&haystack)
                     }
                 };
 
-                let pattern = unsafe {
+                let pattern: &[u8; T::LANES] = unsafe {
                     if pattern.len() < T::LANES {
                         &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
                     } else {
-                        <&[u8; T::LANES]>::try_from(pattern).unwrap_unchecked()
+                        transmute_copy(&pattern)
                     }
                 };
                 f(haystack, pattern, mask.to_u64())

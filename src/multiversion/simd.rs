@@ -1,4 +1,7 @@
-use core::simd::{cmp::SimdPartialEq, LaneCount, Mask, Simd, SupportedLaneCount};
+use core::{
+    mem::transmute_copy,
+    simd::{cmp::SimdPartialEq, LaneCount, Mask, Simd, SupportedLaneCount},
+};
 
 use crate::utils::{pad_zeroes_slice_unchecked, simd::SimdBits};
 
@@ -147,13 +150,14 @@ where
             .into_par_iter()
             .enumerate()
             .find_map_first(|(stride, &window)| {
-                let window = unsafe {
+                let window: &[u8; T::LANES] = unsafe {
                     if window.len() < T::LANES {
                         &pad_zeroes_slice_unchecked(window)
                     } else {
-                        <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
+                        transmute_copy(&window)
                     }
                 };
+
                 equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
                     .map(|position| T::LANES * stride + position)
             })
@@ -165,13 +169,14 @@ where
             .chunks(T::LANES)
             .enumerate()
             .find_map(|(stride, window)| {
-                let window = unsafe {
+                let window: &[u8; T::LANES] = unsafe {
                     if window.len() < T::LANES {
                         &pad_zeroes_slice_unchecked(window)
                     } else {
-                        <&[u8; T::LANES]>::try_from(window).unwrap_unchecked()
+                        transmute_copy(&window)
                     }
                 };
+
                 equal_then_find_second_position_simd_core(first_splat, window, stride == 0)
                     .map(|position| T::LANES * stride + position)
             })
