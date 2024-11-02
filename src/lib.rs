@@ -263,27 +263,15 @@ where
         })
     }
 
-    #[inline(always)]
+    #[inline]
     fn scan_inner<'a>(
         &self,
         mut haystack: &'a [u8],
         f: impl Fn(&[u8; N]) -> bool,
     ) -> Option<&'a [u8]> {
         let exact_match = self.mask.is_exact();
-
-        if haystack.len() < N {
-            if exact_match {
-                None
-            } else {
-                f(unsafe { &pad_zeroes_slice_unchecked::<N>(haystack) }).then_some(haystack)
-            }
-        } else {
             while !haystack.is_empty() {
                 let haystack_smaller_than_n = haystack.len() < N;
-                // If we are having the mask to match for all, and the chunk is actually smaller than N, we are cooked anyway
-                if exact_match && haystack_smaller_than_n {
-                    return None;
-                }
 
                 let window: &[u8; N] = unsafe {
                     if haystack_smaller_than_n {
@@ -295,6 +283,9 @@ where
 
                 if f(window) {
                     return Some(haystack);
+            } else if exact_match && haystack_smaller_than_n {
+                // If we are having the mask to match for all, and the chunk is actually smaller than N, we are cooked anyway
+                return None;
                 }
 
                 // Since we are using a sliding window approach, we are safe to determine that we can either:
@@ -325,7 +316,6 @@ where
                 haystack = unsafe { haystack.get_unchecked(move_position..) };
             }
             None
-        }
     }
 
     fn equal_then_find_second_position(&self, first: u8, window: &[u8; N]) -> Option<usize> {
