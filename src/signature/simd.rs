@@ -56,7 +56,7 @@ where
     {
         let mut checks = chunk
             .chunks(T::LANES)
-            .zip(self.0.pattern.chunks(T::LANES))
+            .zip(self.pattern.chunks(T::LANES))
             .zip(
                 self.mask
                     .chunks(T::LANES)
@@ -126,7 +126,7 @@ where
             // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
             let move_position = if unsafe { self.mask.get_unchecked(0) } && !haystack_smaller_than_n
             {
-                self.equal_then_find_second_position(unsafe { self.0.get_unchecked(0) }, window)
+                self.equal_then_find_second_position(unsafe { self.get_unchecked(0) }, window)
                     .unwrap_or(N)
             } else {
                 1

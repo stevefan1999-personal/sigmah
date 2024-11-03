@@ -34,7 +34,7 @@ where
         .into_par_iter()
         .zip(pattern.into_par_iter())
         .zip(
-            mask.0
+            mask
                 .to_bitvec()
                 .into_iter()
                 .take(N)
