@@ -48,16 +48,19 @@ pub fn match_simd_select_core<const N: usize>(
     data: &[u8; N],
     pattern: &[u8; N],
     mask: impl Into<u64>,
-) -> bool
+) -> Result<(), usize>
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    Mask::from_bitmask(mask.into())
-        .select_mask(
-            Simd::from_array(*data).simd_eq(Simd::from_array(*pattern)),
-            Mask::from_bitmask(u64::MAX),
-        )
-        .all()
+    let mask = Mask::from_bitmask(mask.into()).select_mask(
+        Simd::from_array(*data).simd_eq(Simd::from_array(*pattern)),
+        Mask::from_bitmask(u64::MAX),
+    );
+    if mask.all() {
+        Ok(())
+    } else {
+        Err((!mask).first_set().unwrap_or(0))
+    }
 }
 
 #[inline(always)]
@@ -84,12 +87,17 @@ pub fn match_simd_core<const N: usize>(
     data: &[u8; N],
     pattern: &[u8; N],
     mask: impl Into<u64>,
-) -> bool
+) -> Result<(), usize>
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    (!Mask::from_bitmask(mask.into()) | Simd::from_array(*data).simd_eq(Simd::from_array(*pattern)))
-        .all()
+    let mask = !Mask::from_bitmask(mask.into())
+        | Simd::from_array(*data).simd_eq(Simd::from_array(*pattern));
+    if mask.all() {
+        Ok(())
+    } else {
+        Err((!mask).first_set().unwrap_or(0))
+    }
 }
 
 #[inline(always)]

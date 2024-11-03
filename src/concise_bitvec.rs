@@ -1,8 +1,8 @@
 use crate::utils::{const_get_unchecked, const_set_unchecked};
 use bitvec::prelude::*;
-use derive_more::{From, Into};
+use derive_more::{Deref, From, Into};
 
-#[derive(Debug, Copy, Clone, From, Into)]
+#[derive(Debug, Copy, Clone, From, Into, Deref)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(transparent)]
 pub struct ConciseBitArray<const N: usize>(pub BitArray<[u8; N.div_ceil(u8::BITS as usize)]>)

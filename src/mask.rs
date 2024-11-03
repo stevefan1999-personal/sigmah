@@ -1,31 +1,24 @@
 use crate::concise_bitvec::ConciseBitArray;
 use crate::utils::{const_get_unchecked, const_set_unchecked};
-use derive_more::derive::{From, Into};
+use derive_more::{Deref, From, Into};
 
-#[derive(Debug, Copy, Clone, From, Into)]
+#[derive(Debug, Copy, Clone, From, Into, Deref)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(transparent)]
-pub struct Mask<const N: usize>
+pub struct Mask<const N: usize>(pub ConciseBitArray<N>)
 where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-{
-    pub inner: ConciseBitArray<N>,
-}
+    [(); N.div_ceil(u8::BITS as usize)]:;
 
 impl<const N: usize> Mask<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
-    pub const MAX: Self = Self {
-        inner: ConciseBitArray::MAX,
-    };
-    pub const ZERO: Self = Self {
-        inner: ConciseBitArray::ZERO,
-    };
+    pub const MAX: Self = Self(ConciseBitArray::MAX);
+    pub const ZERO: Self = Self(ConciseBitArray::ZERO);
 
     #[inline(always)]
     pub const fn from_bit_array(arr: ConciseBitArray<N>) -> Self {
-        Self { inner: arr }
+        Self(arr)
     }
 
     #[inline(always)]
@@ -36,7 +29,7 @@ where
     #[inline(always)]
     pub const fn from_byte_slice_or_panic(mask: &[u8; N]) -> Self {
         match Self::try_from_byte_slice_to_bitarr(mask) {
-            Ok(x) => Self { inner: x },
+            Ok(x) => Self(x),
             Err(e) => panic!("{}", e),
         }
     }
@@ -97,6 +90,6 @@ where
 
     #[inline(always)]
     pub const fn to_bool_array(&self) -> [bool; N] {
-        self.inner.to_bool_array()
+        self.0.to_bool_array()
     }
 }

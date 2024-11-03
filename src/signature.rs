@@ -1,32 +1,13 @@
-use crate::concise_bitvec::ConciseBitArray;
-use crate::mask::Mask;
 use crate::{
+    concise_bitvec::ConciseBitArray,
+    mask::Mask,
     multiversion::{equal_then_find_second_position_naive_const, match_naive_const},
     utils::{const_get_unchecked, const_set_unchecked, pad_zeroes_slice_unchecked, simd::SimdBits},
 };
 use core::mem::{transmute_copy, MaybeUninit};
+use derive_more::derive::{From, Into};
 
-#[cfg(feature = "rayon")]
-use crate::multiversion::{equal_then_find_second_position_naive_rayon, match_naive_rayon};
-
-#[cfg(all(feature = "rayon", feature = "simd"))]
-use {
-    arrayvec::ArrayVec,
-    rayon::{
-        iter::{IndexedParallelIterator, IntoParallelIterator},
-        prelude::*,
-    },
-};
-
-#[cfg(feature = "simd")]
-use {
-    crate::multiversion::simd::{
-        equal_then_find_second_position_simd, match_simd_core, match_simd_select_core,
-    },
-    core::simd::{LaneCount, SupportedLaneCount},
-};
-
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, From, Into)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C, align(1))]
 pub struct Signature<const N: usize>
@@ -67,9 +48,19 @@ where
         while i < N {
             // const violation: unnecessary bound check
             let (new_lps, new_len, advance) = {
-                if !unsafe { const_get_unchecked(&mask, len) }
-                    || unsafe { self.get_unchecked(i) == self.get_unchecked(len) }
-                {
+                let pat = unsafe {
+                    match (
+                        const_get_unchecked(&mask, len),
+                        const_get_unchecked(&mask, i),
+                    ) {
+                        (false, false) => true,
+                        (false, true) => true,
+                        (true, false) => true,
+                        (true, true) => self.get_unchecked(i) == self.get_unchecked(len),
+                    }
+                };
+
+                if pat {
                     let forward = Some(len + 1);
                     (forward, forward, true)
                 } else if len != 0 {
@@ -162,6 +153,29 @@ where
             mask: Mask::from_bit_array(ConciseBitArray::from_bool_array(mask)),
         }
     }
+
+    #[inline(always)]
+    pub fn naive(self) -> naive::SignatureWithNaive<N> {
+        self.into()
+    }
+
+    #[inline(always)]
+    #[cfg(feature = "simd")]
+    pub fn simd(self) -> simd::SignatureWithSimd<N> {
+        self.into()
+    }
+
+    #[inline(always)]
+    #[cfg(feature = "rayon")]
+    pub fn rayon_naive(self) -> rayon::SignatureWithRayonNaive<N> {
+        self.into()
+    }
+
+    #[inline(always)]
+    #[cfg(all(feature = "rayon", feature = "simd"))]
+    pub fn rayon_simd(self) -> rayon_simd::SignatureWithRayonAndSimd<N> {
+        self.into()
+    }
 }
 
 impl<const N: usize> Signature<N>
@@ -177,27 +191,12 @@ where
     }
 
     pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
-        #[cfg(feature = "rayon")]
-        {
-            self.scan_naive_rayon(haystack)
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            self.scan_naive_const(haystack)
-        }
-    }
-
-    #[cfg(feature = "rayon")]
-    pub fn scan_naive_rayon<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
-        self.scan_inner(haystack, |chunk| {
-            match_naive_rayon(chunk, &self.pattern, &self.mask.inner)
-        })
+        self.scan_naive_const(haystack)
     }
 
     // scan_inner is the main function (due to impl Fn being a trait and not const friendly) and please synchronize in time
     pub const fn scan_naive_const<'a>(&self, mut haystack: &'a [u8]) -> Option<&'a [u8]> {
-        let exact_match = self.mask.inner.is_exact();
+        let exact_match = self.mask.0.is_exact();
         while !haystack.is_empty() {
             let haystack_smaller_than_n = haystack.len() < N;
 
@@ -209,7 +208,7 @@ where
                 }
             };
 
-            if match_naive_const(window, &self.pattern, &self.mask.inner) {
+            if match_naive_const(window, &self.pattern, &self.mask.0).is_ok() {
                 return Some(haystack);
             } else if exact_match && haystack_smaller_than_n {
                 // If we are having the mask to match for all, and the chunk is actually smaller than N, we are cooked anyway
@@ -217,7 +216,7 @@ where
             }
 
             let move_position =
-                if unsafe { self.mask.inner.get_unchecked(0) } && !haystack_smaller_than_n {
+                if unsafe { self.mask.0.get_unchecked(0) } && !haystack_smaller_than_n {
                     if let Some(pos) = equal_then_find_second_position_naive_const(
                         unsafe { self.get_unchecked(0) },
                         window,
@@ -245,7 +244,7 @@ where
         mut haystack: &'a [u8],
         f: impl Fn(&[u8; N]) -> bool,
     ) -> Option<&'a [u8]> {
-        let exact_match = self.mask.inner.is_exact();
+        let exact_match = self.mask.0.is_exact();
         while !haystack.is_empty() {
             let haystack_smaller_than_n = haystack.len() < N;
 
@@ -280,7 +279,7 @@ where
             // If in SIMD manner, we can first take the first character, splat it to vector width and match it with the haystack window after first element,
             // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
             let move_position =
-                if unsafe { self.mask.inner.get_unchecked(0) } && !haystack_smaller_than_n {
+                if unsafe { self.mask.0.get_unchecked(0) } && !haystack_smaller_than_n {
                     self.equal_then_find_second_position(unsafe { self.get_unchecked(0) }, window)
                         .unwrap_or(N)
                 } else {
@@ -310,13 +309,13 @@ where
         #[cfg(feature = "simd")]
         {
             if N >= 64 {
-                self.match_simd::<u64>(chunk)
+                self.simd().match_chunk::<u64>(chunk)
             } else if N >= 32 {
-                self.match_simd::<u32>(chunk)
+                self.simd().match_chunk::<u32>(chunk)
             } else if N >= 16 {
-                self.match_simd::<u16>(chunk)
+                self.simd().match_chunk::<u16>(chunk)
             } else if N >= 8 {
-                self.match_simd::<u8>(chunk)
+                self.simd().match_chunk::<u8>(chunk)
             } else {
                 // for the lulz
                 self.match_naive(chunk)
@@ -331,181 +330,7 @@ where
 
     #[inline(always)]
     pub fn match_naive(&self, chunk: &[u8; N]) -> bool {
-        #[cfg(feature = "rayon")]
-        {
-            match_naive_rayon(chunk, &self.pattern, &self.mask.inner)
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            match_naive_const(chunk, &self.pattern, &self.mask.inner)
-        }
-    }
-}
-
-#[cfg(feature = "simd")]
-impl<const N: usize> Signature<N>
-where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-    [(); N.div_ceil(u64::LANES)]:,
-    [(); N.div_ceil(u32::LANES)]:,
-    [(); N.div_ceil(u16::LANES)]:,
-    [(); N.div_ceil(u8::LANES)]:,
-{
-    #[inline(always)]
-    pub fn scan_simd<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
-    where
-        LaneCount<{ T::LANES }>: SupportedLaneCount,
-        [(); N.div_ceil(T::LANES)]:,
-    {
-        let f = |chunk: &[u8; N]| self.match_simd(chunk);
-        self.scan_inner(haystack, f)
-    }
-
-    #[inline(always)]
-    pub fn scan_simd_select<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
-    where
-        LaneCount<{ T::LANES }>: SupportedLaneCount,
-        [(); N.div_ceil(T::LANES)]:,
-    {
-        let f = |chunk: &[u8; N]| self.match_simd_select(chunk);
-        self.scan_inner(haystack, f)
-    }
-
-    #[inline(always)]
-    pub fn match_simd<T: SimdBits>(&self, chunk: &[u8; N]) -> bool
-    where
-        LaneCount<{ T::LANES }>: SupportedLaneCount,
-        [(); N.div_ceil(T::LANES)]:,
-    {
-        #[cfg(feature = "rayon")]
-        {
-            self.match_simd_rayon_inner(chunk, match_simd_core)
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            self.match_simd_simple_inner(chunk, match_simd_core)
-        }
-    }
-
-    #[inline(always)]
-    pub fn match_simd_select<T: SimdBits>(&self, chunk: &[u8; N]) -> bool
-    where
-        LaneCount<{ T::LANES }>: SupportedLaneCount,
-        [(); N.div_ceil(T::LANES)]:,
-    {
-        #[cfg(feature = "rayon")]
-        {
-            self.match_simd_rayon_inner(chunk, match_simd_select_core)
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            self.match_simd_simple_inner(chunk, match_simd_select_core)
-        }
-    }
-
-    #[inline(always)]
-    pub fn match_simd_simple_inner<T: SimdBits>(
-        &self,
-        chunk: &[u8; N],
-        f: impl Fn(&[u8; T::LANES], &[u8; T::LANES], u64) -> bool + Sync,
-    ) -> bool
-    where
-        [(); T::LANES]:,
-    {
-        chunk
-            .chunks(T::LANES)
-            .zip(self.pattern.chunks(T::LANES))
-            .zip(
-                self.mask
-                    .inner
-                    .0
-                    .chunks(T::LANES)
-                    .map(|mask| mask.iter_ones().fold(T::ZERO, |acc, x| acc | (T::ONE << x))),
-            )
-            .all(|((haystack, pattern), ref mask)| {
-                let haystack: &[u8; T::LANES] = unsafe {
-                    if haystack.len() < T::LANES {
-                        &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
-                    } else {
-                        transmute_copy(&haystack)
-                    }
-                };
-
-                let pattern: &[u8; T::LANES] = unsafe {
-                    if pattern.len() < T::LANES {
-                        &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
-                    } else {
-                        transmute_copy(&pattern)
-                    }
-                };
-                f(haystack, pattern, mask.to_u64())
-            })
-    }
-}
-
-#[cfg(all(feature = "simd", feature = "rayon"))]
-impl<const N: usize> Signature<N>
-where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-    [(); N.div_ceil(u64::LANES)]:,
-    [(); N.div_ceil(u32::LANES)]:,
-    [(); N.div_ceil(u16::LANES)]:,
-    [(); N.div_ceil(u8::LANES)]:,
-{
-    #[inline(always)]
-    pub fn match_simd_rayon<T: SimdBits>(&self, chunk: &[u8; N]) -> bool
-    where
-        LaneCount<{ T::LANES }>: SupportedLaneCount,
-        [(); N.div_ceil(T::LANES)]:,
-    {
-        self.match_simd_rayon_inner(chunk, match_simd_core)
-    }
-
-    #[inline(always)]
-    pub fn match_simd_rayon_inner<T: SimdBits>(
-        &self,
-        chunk: &[u8; N],
-        f: impl Fn(&[u8; T::LANES], &[u8; T::LANES], u64) -> bool + Sync,
-    ) -> bool
-    where
-        [(); N.div_ceil(T::LANES)]:,
-    {
-        let chunks: ArrayVec<&[u8], { N.div_ceil(T::LANES) }> = chunk.chunks(T::LANES).collect();
-        let patterns: ArrayVec<&[u8], { N.div_ceil(T::LANES) }> =
-            self.pattern.chunks(T::LANES).collect();
-        let masks = self
-            .mask
-            .inner
-            .0
-            .chunks(T::LANES)
-            .map(|mask| mask.iter_ones().fold(T::ZERO, |acc, x| acc | (T::ONE << x)))
-            .collect::<ArrayVec<T, { N.div_ceil(T::LANES) }>>();
-
-        chunks
-            .into_par_iter()
-            .zip(patterns.into_par_iter())
-            .zip(masks.into_par_iter())
-            .all(|((&haystack, &pattern), mask)| {
-                let haystack: &[u8; T::LANES] = unsafe {
-                    if haystack.len() < T::LANES {
-                        &pad_zeroes_slice_unchecked::<{ T::LANES }>(haystack)
-                    } else {
-                        transmute_copy(&haystack)
-                    }
-                };
-
-                let pattern: &[u8; T::LANES] = unsafe {
-                    if pattern.len() < T::LANES {
-                        &pad_zeroes_slice_unchecked::<{ T::LANES }>(pattern)
-                    } else {
-                        transmute_copy(&pattern)
-                    }
-                };
-                f(haystack, pattern, mask.to_u64())
-            })
+        match_naive_const(chunk, &self.pattern, &self.mask.0).is_ok()
     }
 }
 
@@ -521,7 +346,7 @@ where
     fn equal_then_find_second_position(&self, first: u8, window: &[u8; N]) -> Option<usize> {
         #[cfg(feature = "simd")]
         {
-            self.equal_then_find_second_position_with_simd(first, window)
+            self.simd().equal_then_find_second_position(first, window)
         }
 
         #[cfg(not(feature = "simd"))]
@@ -529,39 +354,15 @@ where
             self.equal_then_find_second_position_naive(first, window)
         }
     }
-
-    #[inline(always)]
-    fn equal_then_find_second_position_naive(&self, first: u8, window: &[u8; N]) -> Option<usize> {
-        // for the lulz
-        #[cfg(feature = "rayon")]
-        {
-            equal_then_find_second_position_naive_rayon(first, window)
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            equal_then_find_second_position_naive_const(first, window)
-        }
-    }
-
-    #[inline(always)]
-    #[cfg(feature = "simd")]
-    fn equal_then_find_second_position_with_simd(
-        &self,
-        first: u8,
-        window: &[u8; N],
-    ) -> Option<usize> {
-        if N >= 64 {
-            equal_then_find_second_position_simd::<u64, N>(first, window)
-        } else if N >= 32 {
-            equal_then_find_second_position_simd::<u32, N>(first, window)
-        } else if N >= 16 {
-            equal_then_find_second_position_simd::<u16, N>(first, window)
-        } else if N >= 8 {
-            equal_then_find_second_position_simd::<u8, N>(first, window)
-        } else {
-            // for the lulz
-            self.equal_then_find_second_position_naive(first, window)
-        }
-    }
 }
+
+#[cfg(feature = "simd")]
+mod simd;
+
+#[cfg(feature = "rayon")]
+mod rayon;
+
+#[cfg(all(feature = "rayon", feature = "simd"))]
+mod rayon_simd;
+
+mod naive;

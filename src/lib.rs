@@ -11,5 +11,5 @@ pub(crate) mod multiversion;
 pub mod signature;
 pub mod utils;
 
-pub use signature::Signature;
 pub use mask::Mask;
+pub use signature::Signature;

@@ -49,7 +49,7 @@ pub const fn match_naive_const<const N: usize>(
     chunk: &[u8; N],
     pattern: &[u8; N],
     mask: &ConciseBitArray<N>,
-) -> bool
+) -> Result<(), usize>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
@@ -61,11 +61,11 @@ where
             let mask = (const_get_unchecked(&mask.0.data, idx) & (1 << bit_pos)) != 0;
             !mask || (const_get_unchecked(chunk, i) == const_get_unchecked(pattern, i))
         } {
-            return false;
+            return Err(i);
         }
         i += 1;
     }
-    true
+    Ok(())
 }
 
 #[inline(always)]
