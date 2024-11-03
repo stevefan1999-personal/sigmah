@@ -1,8 +1,7 @@
 use crate::{
     concise_bitvec::ConciseBitArray,
     mask::Mask,
-    multiversion::{equal_then_find_second_position_naive_const, match_naive_const},
-    utils::{const_get_unchecked, const_set_unchecked, pad_zeroes_slice_unchecked, simd::SimdBits},
+    utils::{const_get_unchecked, const_set_unchecked},
 };
 use core::mem::{transmute_copy, MaybeUninit};
 use derive_more::derive::{From, Into};
@@ -178,191 +177,13 @@ where
     }
 }
 
-impl<const N: usize> Signature<N>
-where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-    [(); N.div_ceil(u64::LANES)]:,
-    [(); N.div_ceil(u32::LANES)]:,
-    [(); N.div_ceil(u16::LANES)]:,
-    [(); N.div_ceil(u8::LANES)]:,
-{
-    pub fn scan<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
-        self.scan_inner(haystack, |chunk| self.match_best_effort(chunk))
-    }
-
-    pub fn scan_naive<'a>(&self, haystack: &'a [u8]) -> Option<&'a [u8]> {
-        self.scan_naive_const(haystack)
-    }
-
-    // scan_inner is the main function (due to impl Fn being a trait and not const friendly) and please synchronize in time
-    pub const fn scan_naive_const<'a>(&self, mut haystack: &'a [u8]) -> Option<&'a [u8]> {
-        let exact_match = self.mask.0.is_exact();
-        while !haystack.is_empty() {
-            let haystack_smaller_than_n = haystack.len() < N;
-
-            let window: &[u8; N] = unsafe {
-                if haystack_smaller_than_n {
-                    &pad_zeroes_slice_unchecked::<N>(haystack)
-                } else {
-                    transmute_copy(&haystack)
-                }
-            };
-
-            if match_naive_const(window, &self.pattern, &self.mask.0).is_ok() {
-                return Some(haystack);
-            } else if exact_match && haystack_smaller_than_n {
-                // If we are having the mask to match for all, and the chunk is actually smaller than N, we are cooked anyway
-                return None;
-            }
-
-            let move_position =
-                if unsafe { self.mask.0.get_unchecked(0) } && !haystack_smaller_than_n {
-                    if let Some(pos) = equal_then_find_second_position_naive_const(
-                        unsafe { self.get_unchecked(0) },
-                        window,
-                    ) {
-                        pos
-                    } else {
-                        N
-                    }
-                } else {
-                    1
-                };
-            haystack = unsafe {
-                core::slice::from_raw_parts(
-                    haystack.as_ptr().add(move_position),
-                    haystack.len() - move_position,
-                )
-            };
-        }
-        None
-    }
-
-    #[inline]
-    fn scan_inner<'a>(
-        &self,
-        mut haystack: &'a [u8],
-        f: impl Fn(&[u8; N]) -> bool,
-    ) -> Option<&'a [u8]> {
-        let exact_match = self.mask.0.is_exact();
-        while !haystack.is_empty() {
-            let haystack_smaller_than_n = haystack.len() < N;
-
-            let window: &[u8; N] = unsafe {
-                if haystack_smaller_than_n {
-                    &pad_zeroes_slice_unchecked::<N>(haystack)
-                } else {
-                    transmute_copy(&haystack)
-                }
-            };
-
-            if f(window) {
-                return Some(haystack);
-            } else if exact_match && haystack_smaller_than_n {
-                // If we are having the mask to match for all, and the chunk is actually smaller than N, we are cooked anyway
-                return None;
-            }
-
-            // Since we are using a sliding window approach, we are safe to determine that we can either:
-            //   1. Skip to the first position of c for all c in window[1..] where c == window[0]
-            //   2. Skip this entire window
-            // The optimization is derived from the Z-Algorithm which constructs an array Z,
-            // where Z[i] represents the length of the longest substring starting from i which is also a prefix of the string.
-            // More formally, given first Z[0] is tombstone, then for i in 1..N:
-            //   Z[i] is the length of the longest substring starting at i that matches the prefix of S (i.e. memcmp(S[0:], S[i:])).
-            // Then we further simplify that to find the first position where Z[i] != 0, it to use the fact that if Z[i] > 0, it has to be a prefix of our pattern,
-            // so it is a potential search point. If all that is in the Z box are 0, then we are safe to assume all patterns are unique and need one-by-one brute force.
-            // Technically speaking, if we repeat this process to each shift of the window with respect to its mask position, we can obtain the Z-box algorithm as well.
-            // It is speculated that we can redefine the special window[0] prefix to a value of "w" and index "i" for any c for all i, c in window[1..] where i == first(for i, m in mask[1..] where m == true),
-            // and then do skip to the "i"th position of c for all c in window[1..] where c == w. For now I'm too lazy to investigate whether the proof is correct.
-            //
-            // If in SIMD manner, we can first take the first character, splat it to vector width and match it with the haystack window after first element,
-            // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
-            let move_position =
-                if unsafe { self.mask.0.get_unchecked(0) } && !haystack_smaller_than_n {
-                    self.equal_then_find_second_position(unsafe { self.get_unchecked(0) }, window)
-                        .unwrap_or(N)
-                } else {
-                    1
-                };
-            haystack = unsafe {
-                core::slice::from_raw_parts(
-                    haystack.as_ptr().add(move_position),
-                    haystack.len() - move_position,
-                )
-            };
-        }
-        None
-    }
-}
-
-impl<const N: usize> Signature<N>
-where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-    [(); N.div_ceil(u64::LANES)]:,
-    [(); N.div_ceil(u32::LANES)]:,
-    [(); N.div_ceil(u16::LANES)]:,
-    [(); N.div_ceil(u8::LANES)]:,
-{
-    #[inline(always)]
-    pub fn match_best_effort(&self, chunk: &[u8; N]) -> bool {
-        #[cfg(feature = "simd")]
-        {
-            if N >= 64 {
-                self.simd().match_chunk::<u64>(chunk)
-            } else if N >= 32 {
-                self.simd().match_chunk::<u32>(chunk)
-            } else if N >= 16 {
-                self.simd().match_chunk::<u16>(chunk)
-            } else if N >= 8 {
-                self.simd().match_chunk::<u8>(chunk)
-            } else {
-                // for the lulz
-                self.match_naive(chunk)
-            }
-        }
-
-        #[cfg(not(feature = "simd"))]
-        {
-            self.match_naive(chunk)
-        }
-    }
-
-    #[inline(always)]
-    pub fn match_naive(&self, chunk: &[u8; N]) -> bool {
-        match_naive_const(chunk, &self.pattern, &self.mask.0).is_ok()
-    }
-}
-
-impl<const N: usize> Signature<N>
-where
-    [(); N.div_ceil(u8::BITS as usize)]:,
-    [(); N.div_ceil(u64::LANES)]:,
-    [(); N.div_ceil(u32::LANES)]:,
-    [(); N.div_ceil(u16::LANES)]:,
-    [(); N.div_ceil(u8::LANES)]:,
-{
-    #[inline(always)]
-    fn equal_then_find_second_position(&self, first: u8, window: &[u8; N]) -> Option<usize> {
-        #[cfg(feature = "simd")]
-        {
-            self.simd().equal_then_find_second_position(first, window)
-        }
-
-        #[cfg(not(feature = "simd"))]
-        {
-            self.equal_then_find_second_position_naive(first, window)
-        }
-    }
-}
-
 #[cfg(feature = "simd")]
-mod simd;
+pub mod simd;
 
 #[cfg(feature = "rayon")]
-mod rayon;
+pub mod rayon;
 
 #[cfg(all(feature = "rayon", feature = "simd"))]
-mod rayon_simd;
+pub mod rayon_simd;
 
-mod naive;
+pub mod naive;
