@@ -16,12 +16,6 @@ impl<const N: usize> SignatureWithRayonNaive<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
 {
-    #[inline(always)]
-    pub fn match_chunk(&self, chunk: &[u8; N]) -> bool {
-        match_naive_rayon(chunk, &self.pattern, &self.mask)
-    }
-
-    #[inline(always)]
     pub fn scan<'a>(&self, mut haystack: &'a [u8]) -> Option<&'a [u8]> {
         let exact_match = self.mask.is_exact();
         while !haystack.is_empty() {
@@ -35,7 +29,7 @@ where
                 }
             };
 
-            if self.match_chunk(window) {
+            if match_naive_rayon(window, &self.pattern, &self.mask) {
                 return Some(haystack);
             } else if exact_match && haystack_smaller_than_n {
                 // If we are having the mask to match for all, and the chunk is actually smaller than N, we are cooked anyway

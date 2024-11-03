@@ -25,26 +25,28 @@ where
     [(); N.div_ceil(u16::LANES)]:,
     [(); N.div_ceil(u8::LANES)]:,
 {
-    #[inline(always)]
     pub fn scan<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
         LaneCount<{ T::LANES }>: SupportedLaneCount,
         [(); N.div_ceil(T::LANES)]:,
     {
-        self.scan_inner(haystack, |chunk: &[u8; N]| self.match_inner(chunk, match_simd_core))
+        self.scan_inner(haystack, |chunk: &[u8; N]| {
+            self.match_inner(chunk, match_simd_core)
+        })
     }
 
-    #[inline(always)]
     pub fn scan_select<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
         LaneCount<{ T::LANES }>: SupportedLaneCount,
         [(); N.div_ceil(T::LANES)]:,
     {
-        self.scan_inner(haystack, |chunk: &[u8; N]| self.match_inner(chunk, match_simd_select_core))
+        self.scan_inner(haystack, |chunk: &[u8; N]| {
+            self.match_inner(chunk, match_simd_select_core)
+        })
     }
 
     #[inline(always)]
-    pub fn match_inner<T: SimdBits>(
+    fn match_inner<T: SimdBits>(
         &self,
         chunk: &[u8; N],
         f: impl Fn(&[u8; T::LANES], &[u8; T::LANES], u64) -> Result<(), usize> + Sync,
@@ -82,7 +84,7 @@ where
         checks.all(|x| x.is_ok())
     }
 
-    #[inline]
+    #[inline(always)]
     fn scan_inner<'a>(
         &self,
         mut haystack: &'a [u8],
