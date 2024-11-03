@@ -1,6 +1,6 @@
 use super::Signature;
 use crate::{
-    multiversion::simd::{equal_then_find_second_position_simd, match_simd_core},
+    multiversion::simd::match_simd_core,
     utils::{pad_zeroes_slice_unchecked, simd::SimdBits},
 };
 use arrayvec::ArrayVec;
