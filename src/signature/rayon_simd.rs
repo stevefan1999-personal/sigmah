@@ -1,6 +1,6 @@
 use super::Signature;
 use crate::{
-    multiversion::simd::match_simd_core,
+    multiversion::simd::{equal_then_find_second_position_simd, match_simd_core},
     utils::{pad_zeroes_slice_unchecked, simd::SimdBits},
 };
 use arrayvec::ArrayVec;
@@ -23,10 +23,6 @@ where
 impl<const N: usize> SignatureWithRayonAndSimd<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
-    [(); N.div_ceil(u64::LANES)]:,
-    [(); N.div_ceil(u32::LANES)]:,
-    [(); N.div_ceil(u16::LANES)]:,
-    [(); N.div_ceil(u8::LANES)]:,
 {
     #[inline(always)]
     fn match_chunk<T: SimdBits>(
@@ -36,7 +32,6 @@ where
     ) -> bool
     where
         [(); N.div_ceil(T::LANES)]:,
-        LaneCount<{ T::LANES }>: SupportedLaneCount,
     {
         let chunks: ArrayVec<&[u8], { N.div_ceil(T::LANES) }> = chunk.chunks(T::LANES).collect();
         let patterns: ArrayVec<&[u8], { N.div_ceil(T::LANES) }> =
@@ -73,8 +68,8 @@ where
 
     pub fn scan<'a, T: SimdBits>(&self, mut haystack: &'a [u8]) -> Option<&'a [u8]>
     where
-        [(); N.div_ceil(T::LANES)]:,
         LaneCount<{ T::LANES }>: SupportedLaneCount,
+        [(); N.div_ceil(T::LANES)]:,
     {
         let exact_match = self.mask.is_exact();
         while !haystack.is_empty() {
@@ -97,8 +92,7 @@ where
 
             let move_position = if unsafe { self.mask.get_unchecked(0) } && !haystack_smaller_than_n
             {
-                self.simd()
-                    .equal_then_find_second_position(unsafe { self.get_unchecked(0) }, window)
+                equal_then_find_second_position_simd(unsafe { self.get_unchecked(0) }, window)
                     .unwrap_or(N)
             } else {
                 1

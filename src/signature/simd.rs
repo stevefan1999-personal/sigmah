@@ -20,10 +20,6 @@ where
 impl<const N: usize> SignatureWithSimd<N>
 where
     [(); N.div_ceil(u8::BITS as usize)]:,
-    [(); N.div_ceil(u64::LANES)]:,
-    [(); N.div_ceil(u32::LANES)]:,
-    [(); N.div_ceil(u16::LANES)]:,
-    [(); N.div_ceil(u8::LANES)]:,
 {
     pub fn scan<'a, T: SimdBits>(&self, haystack: &'a [u8]) -> Option<&'a [u8]>
     where
@@ -50,10 +46,7 @@ where
         &self,
         chunk: &[u8; N],
         f: impl Fn(&[u8; T::LANES], &[u8; T::LANES], u64) -> Result<(), usize> + Sync,
-    ) -> bool
-    where
-        [(); T::LANES]:,
-    {
+    ) -> bool {
         let mut checks = chunk
             .chunks(T::LANES)
             .zip(self.pattern.chunks(T::LANES))
@@ -85,11 +78,15 @@ where
     }
 
     #[inline(always)]
-    fn scan_inner<'a>(
+    fn scan_inner<'a, T: SimdBits>(
         &self,
         mut haystack: &'a [u8],
         f: impl Fn(&[u8; N]) -> bool,
-    ) -> Option<&'a [u8]> {
+    ) -> Option<&'a [u8]>
+    where
+        LaneCount<{ T::LANES }>: SupportedLaneCount,
+        [(); N.div_ceil(T::LANES)]:,
+    {
         let exact_match = self.mask.is_exact();
         while !haystack.is_empty() {
             let haystack_smaller_than_n = haystack.len() < N;
@@ -126,7 +123,7 @@ where
             // then do find-first-set and add 1 to cover for the real next position. It is always assumed the scanner will always go at least 1 byte ahead
             let move_position = if unsafe { self.mask.get_unchecked(0) } && !haystack_smaller_than_n
             {
-                self.equal_then_find_second_position(unsafe { self.get_unchecked(0) }, window)
+                equal_then_find_second_position_simd(unsafe { self.get_unchecked(0) }, window)
                     .unwrap_or(N)
             } else {
                 1
@@ -139,22 +136,5 @@ where
             };
         }
         None
-    }
-
-    #[inline(always)]
-    pub(crate) fn equal_then_find_second_position(
-        &self,
-        first: u8,
-        window: &[u8; N],
-    ) -> Option<usize> {
-        if N >= 64 {
-            equal_then_find_second_position_simd::<u64, N>(first, window)
-        } else if N >= 32 {
-            equal_then_find_second_position_simd::<u32, N>(first, window)
-        } else if N >= 16 {
-            equal_then_find_second_position_simd::<u16, N>(first, window)
-        } else {
-            equal_then_find_second_position_simd::<u8, N>(first, window)
-        }
     }
 }
