@@ -2,6 +2,7 @@
 name = "sigmah"
 version = "0.6.1"
 edition = "2021"
+rust-version = "1.86"
 description = "Create and scan binary signature in Rust efficiently"
 license = "MIT"
 authors = ["Steve Fan <29133953+stevefan1999-personal@users.noreply.github.com>"]
