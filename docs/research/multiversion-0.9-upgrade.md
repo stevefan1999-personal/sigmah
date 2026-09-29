@@ -69,11 +69,11 @@ enough for the `simd` feature, which then fails with E0658.
 
 Each of these behaves the same with 0.7.4 and 0.9.0.
 
-1. **64-lane scanners miss matches.** `equal_then_find_second_position_simd_core` builds its
-   ignore-first mask as `(i64::MAX - 1) as u64`, which is `0x7FFF_FFFF_FFFF_FFFE` and clears bit 63
-   as well as bit 0. `scan::<u64>` and `scan::<usize>` then return `None` where the naive scanner
-   finds a match. Replacing the expression with `u64::MAX - 1` in a scratch copy took the
-   differential test from 296 mismatches to 0.
+1. **64-lane scanners miss matches. Fixed in 0.6.2.** `equal_then_find_second_position_simd_core`
+   built its ignore-first mask as `(i64::MAX - 1) as u64`, which is `0x7FFF_FFFF_FFFF_FFFE` and
+   clears bit 63 as well as bit 0. `scan::<u64>` and `scan::<usize>` then returned `None` where the
+   naive scanner finds a match. Replacing the expression with `u64::MAX - 1` took the differential
+   test from 296 mismatches to 0. `tests/simd_last_lane.rs` guards against a regression.
 2. **`simd` does not compile on nightlies from 2026-03 onward.** `core::simd::LaneCount` and
    `SupportedLaneCount` no longer exist, and `Mask::select_mask` is gone.
 3. **`simd` does not compile on 32-bit ARM.** The `arm+neon`, `arm+vfp4`, `arm+vfp3` and `arm+vfp2`
