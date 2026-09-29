@@ -82,7 +82,7 @@ Currently, the Rust programming language feature known as [`generic_const_exprs`
 
 3. **Current Compatibility**:
 
-   - Despite its incomplete status, libraries can still compile and run with the feature using `cargo 1.84.0-nightly` from October 25, 2024. This indicates a temporary robustness in the feature's implementation but does not address its long-term stability.
+   - Despite its incomplete status, libraries can still compile and run with the feature using `rustc 1.100.0-nightly` from August 31, 2026. The oldest usable nightly is one reporting `rustc 1.86`, the minimum required by the `multiversion` dependency. This indicates a temporary robustness in the feature's implementation but does not address its long-term stability.
 
 4. **Future Outlook**:
    - **Stagnation and Potential Bit Rot**: The `generic_const_exprs` feature has seen little progress over the years, raising concerns about its maintenance and future compatibility. Without active development, there's a risk of "bit rot", where the code might become outdated or fail to integrate with new language features or standards.
