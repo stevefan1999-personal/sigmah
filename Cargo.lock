@@ -184,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "sigmah"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "arrayvec",
  "bitvec",

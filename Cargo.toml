@@ -1,6 +1,6 @@
 [package]
 name = "sigmah"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2021"
 rust-version = "1.86"
 description = "Create and scan binary signature in Rust efficiently"
