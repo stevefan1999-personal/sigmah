@@ -129,7 +129,7 @@ where
     LaneCount<N>: SupportedLaneCount,
 {
     let ignore_first = Mask::from_bitmask(if is_first_chunk {
-        (i64::MAX - 1) as u64
+        u64::MAX - 1
     } else {
         u64::MAX
     });
