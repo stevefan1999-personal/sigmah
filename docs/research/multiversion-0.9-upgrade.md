@@ -65,6 +65,8 @@ Cargo refuses 0.9.0 on toolchains older than rustc 1.86, in every feature config
 `multiversion` is a non-optional dependency. 0.7.4 built on 1.85. `--ignore-rust-version` is not
 enough for the `simd` feature, which then fails with E0658.
 
+Since 0.6.2 `sigmah` declares `rust-version = "1.86"` itself, so cargo names `sigmah` in the refusal.
+
 ## Defects found that predate the upgrade
 
 Each of these behaves the same with 0.7.4 and 0.9.0.
